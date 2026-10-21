@@ -368,7 +368,7 @@ async function renderStruktur() {
       (c.bawahan.length ? '<div class="flex flex-col items-center">' + line + '<div class="pt-4">' + staffTree(c.bawahan) + '</div></div>' : '') + '</div>';
   }).join('');
   const html = wrap(sectionTitle('Profil', 'Struktur Organisasi', 'Bagan disusun otomatis dari data Pejabat & Pegawai. Staf dikelompokkan di bawah Kepala Seksi masing-masing.') +
-    '<div class="' + CARD + ' p-4 md:p-6 overflow-x-auto"><div class="flex flex-col items-center min-w-fit gap-0">' +
+    '<div class="' + CARD + ' p-4 md:p-6 overflow-x-auto"><div class="flex flex-col items-center w-max min-w-full gap-0">' +
     (kabid.length ? '<div class="flex justify-center">' + box(kabid[0], true) + '</div>' : '') +
     (cabangList.length ? line + '<div class="flex flex-col items-center gap-10 md:flex-row md:flex-nowrap md:items-start md:justify-center md:gap-0 pt-6">' + cabang + '</div>' : '') +
     (stafLain.length ? line + '<div class="w-full"><div class="text-center text-xs font-bold uppercase tracking-wider text-outline mb-3">Staf Lainnya</div><div class="flex flex-col items-center">' + staffTree(stafLain) + '</div></div>' : '') +
