@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://fajarops88.github.io/website-perairan-udara/sitemap.xml

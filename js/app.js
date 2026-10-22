@@ -1246,11 +1246,21 @@ const ROUTES = {
   'admin-dashboard': renderAdminDashboard, 'admin-pengaduan': renderAdminPengaduan, 'admin-survei': renderAdminSurvei, 'admin-konten': renderAdminKonten, 'admin-pengaturan': renderAdminPengaturan,
   'admin-tk-dash': renderAdminTkDash, 'admin-tk-pesan': renderAdminTkPesan, 'admin-tk-tiket': renderAdminTkTiket, 'admin-tk-kapal': renderAdminTkKapal, 'admin-tk-jadwal': renderAdminTkJadwal, 'admin-tk-laporan': renderAdminTkLaporan, 'admin-tk-set': renderAdminPengaturan
 };
+// Cangkang situs (header, footer, menu) tampil seketika memakai pengaturan tersimpan di peramban;
+// data terbaru diambil bersamaan dengan memuat halaman, lalu cangkang disegarkan.
+function renderShell() { renderHeader(); renderFooter(); renderBottomNav(); renderMobileMenu(); if (AppState.page) updateActiveNav(AppState.page); }
 async function boot() {
-  try { AppState.settings = (await pub('kontak')).settings || {}; } catch (e) { /* tetap lanjut */ }
-  renderHeader(); renderFooter(); renderBottomNav(); renderMobileMenu();
+  try { const c = localStorage.getItem('set_cache'); if (c) AppState.settings = JSON.parse(c) || {}; } catch (e) { /* abaikan */ }
+  renderShell();
   const b = $('#boot'); if (b) b.remove();
   const bid = (new URLSearchParams(location.search).get('berita') || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
-  navigateTo(bid ? 'beritaDetail' : 'home', bid ? { params: { id: bid }, noHistory: true } : { noHistory: true });
+  const nav = navigateTo(bid ? 'beritaDetail' : 'home', bid ? { params: { id: bid }, noHistory: true } : { noHistory: true });
+  try {
+    const st = (await pub('kontak')).settings || {};
+    AppState.settings = st;
+    try { localStorage.setItem('set_cache', JSON.stringify(st)); } catch (e) { /* abaikan */ }
+    renderShell();
+  } catch (e) { /* tetap lanjut */ }
+  await nav;
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
