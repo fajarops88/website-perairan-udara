@@ -348,7 +348,7 @@ async function renderProfil() {
 const avatar = (p, size) => p.foto ? '<img src="' + esc(p.foto) + '" alt="Foto ' + esc(p.nama) + '" loading="lazy" class="' + size + ' rounded-full object-cover bg-surface-container">' : '<div class="' + size + ' rounded-full bg-surface-container-high text-outline flex items-center justify-center">' + ic('person', '!text-[28px]') + '</div>';
 async function renderStruktur() {
   const d = await pub('struktur');
-  const box = (p, lead) => '<div class="' + CARD + ' p-3 flex items-center gap-2 ' + (lead ? 'bg-primary-container !border-secondary-container/40 text-white' : '') + ' min-w-[168px] max-w-[200px]">' + avatar(p, 'w-9 h-9 shrink-0') +
+  const box = (p, lead) => '<div class="' + CARD + ' p-3 flex items-center gap-2 ' + (lead ? '!bg-primary-container !border-secondary-container/40 text-white' : '') + ' min-w-[168px] max-w-[200px]">' + avatar(p, 'w-9 h-9 shrink-0') +
     '<div class="min-w-0"><div class="text-[9.5px] uppercase tracking-wide ' + (lead ? 'text-secondary-fixed' : 'text-secondary') + ' font-bold leading-tight">' + esc(p.jabatan) + '</div><div class="font-headline font-semibold text-sm leading-snug">' + esc(p.nama) + '</div></div></div>';
   const by = k => d.pegawai.filter(p => p.kategori === k);
   const line = '<div class="w-0.5 h-6 bg-secondary mx-auto"></div>';
