@@ -240,9 +240,13 @@ document.addEventListener('click', e => {
 /* =====================================================================
    HALAMAN PUBLIK
    ===================================================================== */
-async function renderHome() {
-  const d = await pub('home'); const s = d.settings; AppState.settings = Object.assign({}, AppState.settings, s); renderHeader(); renderFooter();
-  const sv = d.survei, ad = d.aduan;
+// Beranda tampil seketika (judul & kerangka), lalu data dari server mengisi bagian yang menunggu.
+// Data terakhir disimpan di peramban agar kunjungan berikutnya langsung lengkap.
+const HOME_DEF = { hero_judul: 'Pelayanan Transportasi Perairan dan Udara Kota Balikpapan', hero_deskripsi: 'Informasi resmi, layanan, pengaduan, dan survei kepuasan masyarakat Bidang Perairan dan Udara.' };
+const newsSkeleton = () => '<div class="' + CARD + ' overflow-hidden"><div class="skeleton h-44 !rounded-none"></div><div class="p-5 space-y-2"><div class="skeleton h-4 w-1/3"></div><div class="skeleton h-5 w-5/6"></div><div class="skeleton h-4 w-full"></div><div class="skeleton h-4 w-2/3"></div></div></div>';
+function homeHtml(d, loading) {
+  const s = Object.assign({}, HOME_DEF, AppState.settings, d.settings || {});
+  const sv = d.survei || {}, ad = d.aduan || {};
   const stat = (i, v, l) => '<div class="' + CARD + ' p-5 flex items-center gap-4"><div class="w-12 h-12 rounded-lg bg-surface-container-high text-secondary flex items-center justify-center shrink-0">' + ic(i) + '</div><div><div class="font-headline text-2xl font-bold text-primary-container">' + v + '</div><div class="text-sm text-on-surface-variant">' + l + '</div></div></div>';
   const html =
     '<section class="bg-primary-container text-white relative overflow-hidden"><div class="absolute -right-24 -bottom-24 w-96 h-96 rounded-full bg-secondary-container/10 blur-3xl"></div>' +
@@ -251,18 +255,35 @@ async function renderHome() {
     '<div class="flex flex-wrap gap-3 mt-8"><button type="button" data-nav="tk-pesan" class="' + BTN_A + '">' + ic('confirmation_number') + ' Pesan Tiket Kapal</button>' +
     '<button type="button" data-nav="pengaduan" class="' + BTN + ' bg-white/10 text-white hover:bg-white/20">' + ic('campaign') + ' Lapor Pengaduan</button>' +
     '<button type="button" data-nav="pengaduan" data-tab="track" class="' + BTN + ' bg-white/10 text-white hover:bg-white/20">' + ic('travel_explore') + ' Lacak Pengaduan</button>' +
-    '<button type="button" data-nav="survei" class="' + BTN + ' bg-secondary text-white hover:bg-[#00507b]">' + ic('star_rate') + ' Isi Survei</button></div></div>' + agendaPanel(d.agenda) + '</div></div></section>' +
+    '<button type="button" data-nav="survei" class="' + BTN + ' bg-secondary text-white hover:bg-[#00507b]">' + ic('star_rate') + ' Isi Survei</button></div></div>' + agendaPanel(d.agenda, loading) + '</div></div></section>' +
     wrap(
       '<div class="grid gap-4 md:grid-cols-2 -mt-16 md:-mt-20 mb-12 relative">' +
-      stat('sentiment_satisfied', sv.n ? sv.rata.toFixed(2) + ' <span class="text-base font-normal text-outline">/ 5</span>' : '&ndash;', sv.n ? 'Indeks kepuasan (' + sv.n + ' responden)' : 'Belum ada survei masuk') +
-      stat('task_alt', ad.total ? Math.round(ad.selesai / ad.total * 100) + '%' : '&ndash;', ad.total ? 'Pengaduan telah selesai (' + ad.selesai + ' dari ' + ad.total + ')' : 'Belum ada pengaduan') +
+      stat('sentiment_satisfied', loading ? '&hellip;' : sv.n ? sv.rata.toFixed(2) + ' <span class="text-base font-normal text-outline">/ 5</span>' : '&ndash;', loading ? 'Memuat data...' : sv.n ? 'Indeks kepuasan (' + sv.n + ' responden)' : 'Belum ada survei masuk') +
+      stat('task_alt', loading ? '&hellip;' : ad.total ? Math.round(ad.selesai / ad.total * 100) + '%' : '&ndash;', loading ? 'Memuat data...' : ad.total ? 'Pengaduan telah selesai (' + ad.selesai + ' dari ' + ad.total + ')' : 'Belum ada pengaduan') +
       ''+ '</div>' +
       '<div class="' + CARD + ' p-6 md:p-8 mb-14 grid gap-6 md:grid-cols-[1fr_auto] items-center bg-gradient-to-r from-primary-fixed/40 to-white"><div><span class="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-secondary-fixed text-on-secondary-fixed-variant text-xs font-bold uppercase">' + ic('hub', '!text-[16px]') + ' Sistem terintegrasi</span>' +
       '<h2 class="font-headline text-2xl font-bold text-primary-container mt-3">SIDIKAPET</h2><p class="text-on-surface-variant mt-1 max-w-2xl">Sistem Informasi Digital Data Kapal, Penumpang, dan Tiket Terintegrasi. Pesan tiket kapal secara online, cek tiket, serta pendataan kapal dan penumpang.</p></div>' +
       '<div class="flex flex-wrap gap-3"><button type="button" data-nav="tk-pesan" class="' + BTN_P + '">' + ic('confirmation_number', '!text-[18px]') + ' Pesan tiket</button><button type="button" data-nav="tk-cek" class="' + BTN_S + '">' + ic('manage_search', '!text-[18px]') + ' Cek tiket</button></div></div>' +
       '<div class="flex items-end justify-between mb-6"><h2 class="font-headline text-2xl font-bold text-primary-container">Berita & Pengumuman</h2><button type="button" data-nav="berita" class="text-secondary font-semibold text-sm hover:underline">Lihat semua</button></div>' +
-      '<div class="grid gap-6 md:grid-cols-3">' + (d.berita.length ? d.berita.map(newsCard).join('') : emptyBox('newspaper', 'Belum ada berita.')) + '</div>');
-  return { html: html };
+      '<div class="grid gap-6 md:grid-cols-3">' + (loading ? newsSkeleton() + newsSkeleton() + newsSkeleton() : (d.berita || []).length ? d.berita.map(newsCard).join('') : emptyBox('newspaper', 'Belum ada berita.')) + '</div>');
+  return html;
+}
+async function renderHome() {
+  const hit = AppState.cache['home{}'], segar = hit && Date.now() - hit.t < 120000;
+  let awal = hit ? hit.d : null;
+  if (!awal) { try { awal = JSON.parse(localStorage.getItem('home_cache') || 'null'); } catch (e) { awal = null; } }
+  return { html: homeHtml(awal || {}, !awal), init: () => {
+    if (segar) return;
+    pub('home', {}, 0).then(d => {
+      try { localStorage.setItem('home_cache', JSON.stringify(d)); } catch (e) { /* abaikan */ }
+      AppState.settings = Object.assign({}, AppState.settings, d.settings);
+      if (AppState.page !== 'home') return;
+      $('#app-container').innerHTML = homeHtml(d, false); renderShell();
+    }).catch(e => {
+      if (AppState.page !== 'home' || awal) return;
+      $('#app-container').innerHTML = homeHtml({ berita: [], agenda: [], survei: {}, aduan: {} }, false); toast('Data beranda gagal dimuat. Muat ulang halaman.', 'error');
+    });
+  } };
 }
 // Agenda kegiatan: kotak tanggal + rincian. Rentang beberapa hari ditampilkan "12 Okt - 14 Okt 2026".
 function agendaRange(a) {
@@ -288,7 +309,7 @@ async function renderAgenda() {
   return { html: html };
 }
 // Panel "Agenda Terdekat" di sisi kanan hero beranda
-function agendaPanel(list) {
+function agendaPanel(list, loading) {
   list = list || [];
   const item = a => {
     const m = String(a.tanggal).match(/^(\d{4})-(\d{2})-(\d{2})/), bulan = m ? MONTHS[+m[2] - 1].slice(0, 3) : '', hari = m ? +m[3] : '';
@@ -298,7 +319,7 @@ function agendaPanel(list) {
   };
   return '<aside class="rounded-xl bg-white/10 border border-white/20 p-5 md:p-6 text-white" aria-label="Agenda terdekat"><div class="flex items-center justify-between mb-4"><h2 class="font-headline text-lg font-bold flex items-center gap-2">' + ic('event', '!text-[22px]') + ' Agenda Kegiatan</h2>' +
     '<button type="button" data-nav="agenda" class="text-sm font-semibold text-secondary-container hover:underline">Lihat semua</button></div>' +
-    (list.length ? '<div class="space-y-3">' + list.map(item).join('') + '</div>' : '<p class="text-sm text-[#d1e4ff]">Belum ada agenda mendatang.</p>') + '</aside>';
+    (list.length ? '<div class="space-y-3">' + list.map(item).join('') + '</div>' : '<p class="text-sm text-[#d1e4ff]">' + (loading ? 'Memuat agenda...' : 'Belum ada agenda mendatang.') + '</p>') + '</aside>';
 }
 function newsCard(b) {
   return '<article class="' + CARD + ' overflow-hidden flex flex-col hover:shadow-md transition-shadow"><div class="h-44 bg-surface-container-high flex items-center justify-center text-outline overflow-hidden">' +
