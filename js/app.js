@@ -115,7 +115,7 @@ function fallbackCopy(t) { const x = document.createElement('textarea'); x.value
 const NAV = [
   { id: 'home', l: 'Beranda' },
   { l: 'Profil', children: [
-    { id: 'profil', focus: 'sejarah', l: 'Profil & Sejarah' }, { id: 'profil', focus: 'visimisi', l: 'Visi & Misi' },
+    { id: 'sambutan', l: 'Sambutan Kepala Bidang' }, { id: 'profil', focus: 'sejarah', l: 'Profil & Sejarah' }, { id: 'profil', focus: 'visimisi', l: 'Visi & Misi' },
     { id: 'profil', focus: 'tupoksi', l: 'Tugas & Fungsi' }, { id: 'struktur', l: 'Struktur Organisasi' }, { id: 'pegawai', l: 'Pejabat & Pegawai' }] },
   { id: 'berita', l: 'Berita & Pengumuman' },
   { id: 'agenda', l: 'Agenda' },
@@ -128,7 +128,7 @@ const NAV = [
   { id: 'kontak', l: 'Kontak' }
 ];
 const navAttr = n => 'data-nav="' + n.id + '"' + (n.focus ? ' data-focus="' + n.focus + '"' : '');
-const PAGE_GROUP = { profil: 'Profil', struktur: 'Profil', pegawai: 'Profil', beritaDetail: 'berita', sidikapet: 'SIDIKAPET', 'tk-pesan': 'SIDIKAPET', 'tk-cek': 'SIDIKAPET', 'tk-jadwal': 'SIDIKAPET' };
+const PAGE_GROUP = { sambutan: 'Profil', profil: 'Profil', struktur: 'Profil', pegawai: 'Profil', beritaDetail: 'berita', sidikapet: 'SIDIKAPET', 'tk-pesan': 'SIDIKAPET', 'tk-cek': 'SIDIKAPET', 'tk-jadwal': 'SIDIKAPET' };
 
 function renderHeader() {
   const s = AppState.settings;
@@ -342,6 +342,25 @@ async function renderProfil() {
     '<div class="' + CARD + ' p-6 md:p-8"><h3 class="font-headline text-xl font-bold text-primary-container mb-4">Misi</h3>' + list(d.misi) + '</div></div>' +
     '<div id="sec-tupoksi" class="scroll-mt-24 grid gap-6 md:grid-cols-2"><div class="' + CARD + ' p-6 md:p-8"><h3 class="font-headline text-xl font-bold text-primary-container mb-4">Tugas Pokok</h3>' + list(d.tugas) + '</div>' +
     '<div class="' + CARD + ' p-6 md:p-8"><h3 class="font-headline text-xl font-bold text-primary-container mb-4">Fungsi</h3>' + list(d.fungsi) + '</div></div>');
+  return { html: html };
+}
+
+// Sambutan Kepala Bidang: teks diambil dari Kelola Konten > Profil (jenis "Sambutan"),
+// foto/nama/jabatan dari data Pejabat & Pegawai kategori Kepala Bidang.
+async function renderSambutan() {
+  const [d, st] = await Promise.all([pub('profil'), pub('struktur')]);
+  const sam = (d.profil || []).filter(x => x.jenis === 'Sambutan' && String(x.isi || '').trim())[0];
+  const kb = (st.pegawai || []).filter(p => p.kategori === (st.kategori || [])[0])[0];
+  const potret = kb && kb.foto
+    ? '<img src="' + esc(kb.foto) + '" alt="Foto ' + esc(kb.nama) + '" class="w-full max-w-[260px] aspect-[3/4] object-cover rounded-lg bg-surface-container">'
+    : '<div class="w-full max-w-[260px] aspect-[3/4] rounded-lg bg-surface-container-high text-outline flex items-center justify-center">' + ic('person', '!text-[72px]') + '</div>';
+  const nama = kb ? '<div class="mt-4"><div class="font-headline font-bold text-primary-container leading-snug">' + esc(kb.nama) + '</div><div class="text-xs uppercase tracking-wide font-bold text-secondary mt-1">' + esc(kb.jabatan || 'Kepala Bidang') + '</div></div>' : '';
+  const html = wrap(sectionTitle('Profil', 'Sambutan Kepala Bidang', (sam && sam.judul) || (d.settings.nama_bidang + ' ' + d.settings.nama_dinas)) +
+    (sam
+      ? '<div class="grid gap-8 md:grid-cols-[260px_minmax(0,1fr)] items-start"><div class="flex flex-col items-center md:items-start text-center md:text-left">' + potret + nama + '</div>' +
+        '<article class="' + CARD + ' p-6 md:p-10"><div class="prose-id text-on-surface-variant leading-relaxed space-y-4">' + paras(sam.isi) + '</div>' +
+        (kb ? '<div class="mt-8 pt-6 border-t border-[#F1F5F9]"><div class="font-headline font-bold text-primary-container">' + esc(kb.nama) + '</div><div class="text-sm text-on-surface-variant">' + esc(kb.jabatan || 'Kepala Bidang') + '</div></div>' : '') + '</article></div>'
+      : emptyBox('campaign', 'Sambutan belum diisi.')));
   return { html: html };
 }
 
@@ -712,8 +731,8 @@ const SCHEMA = {
     { k: 'kategori', l: 'Kategori (menentukan posisi di bagan)', t: 'select', o: ['Kepala Bidang', 'Kepala Seksi Kepelabuhanan dan Kebandarudaraan', 'Kepala ASDP', 'Staf'] },
     { k: 'seksi', l: 'Staf di bawah seksi', t: 'select', o: ['-', 'Kepelabuhanan dan Kebandarudaraan', 'ASDP'], h: 'Khusus kategori Staf: menentukan staf ditampilkan di bawah Kepala Seksi yang mana pada bagan.' },
     { k: 'urutan', l: 'Urutan tampil', t: 'text' }, { k: 'status_aktif', l: 'Tampilkan di website?', t: 'select', o: ['Ya', 'Tidak'] }, { k: 'foto_id', l: 'Foto', t: 'file', a: 'image/jpeg,image/png', types: ['image/jpeg', 'image/png'] }] },
-  Profil: { label: 'Profil & Sejarah', show: [['jenis', 'Jenis'], ['judul', 'Judul']], fields: [
-    { k: 'jenis', l: 'Jenis', t: 'select', o: ['Profil', 'Sejarah'] }, { k: 'judul', l: 'Judul', t: 'text' }, { k: 'isi', l: 'Isi', t: 'textarea', rows: 10, h: 'Pisahkan paragraf dengan satu baris kosong.' }] },
+  Profil: { label: 'Profil, Sejarah & Sambutan', show: [['jenis', 'Jenis'], ['judul', 'Judul']], fields: [
+    { k: 'jenis', l: 'Jenis', t: 'select', o: ['Profil', 'Sejarah', 'Sambutan'] }, { k: 'judul', l: 'Judul (untuk Sambutan: anak judul, boleh dikosongkan)', t: 'text' }, { k: 'isi', l: 'Isi', t: 'textarea', rows: 10, h: 'Pisahkan paragraf dengan satu baris kosong. Foto, nama, dan jabatan Kepala Bidang diambil dari Pejabat & Pegawai.' }] },
   VisiMisi: { label: 'Visi & Misi', show: [['jenis', 'Jenis'], ['urutan', 'No'], ['teks', 'Isi']], fields: [
     { k: 'jenis', l: 'Jenis', t: 'select', o: ['Visi', 'Misi'] }, { k: 'urutan', l: 'Urutan', t: 'text' }, { k: 'teks', l: 'Isi', t: 'textarea', rows: 3, r: 1 }] },
   TugasFungsi: { label: 'Tugas & Fungsi', show: [['jenis', 'Jenis'], ['urutan', 'No'], ['teks', 'Isi']], fields: [
@@ -1262,7 +1281,7 @@ document.addEventListener('click', async e => {
 
 /* ---------- Tabel rute & boot ---------- */
 const ROUTES = {
-  home: renderHome, profil: renderProfil, struktur: renderStruktur, pegawai: renderPegawai, berita: renderBerita, beritaDetail: renderBeritaDetail, agenda: renderAgenda,
+  home: renderHome, profil: renderProfil, sambutan: renderSambutan, struktur: renderStruktur, pegawai: renderPegawai, berita: renderBerita, beritaDetail: renderBeritaDetail, agenda: renderAgenda,
   regulasi: renderRegulasi, sidikapet: renderSidikapet, 'tk-pesan': p => tkPesanPage(p, false), 'tk-cek': renderTkCek, 'tk-jadwal': renderTkJadwal, pengaduan: renderPengaduan, survei: renderSurvei, kontak: renderKontak, login: renderLogin,
   'admin-dashboard': renderAdminDashboard, 'admin-pengaduan': renderAdminPengaduan, 'admin-survei': renderAdminSurvei, 'admin-konten': renderAdminKonten, 'admin-pengaturan': renderAdminPengaturan,
   'admin-tk-dash': renderAdminTkDash, 'admin-tk-pesan': renderAdminTkPesan, 'admin-tk-tiket': renderAdminTkTiket, 'admin-tk-kapal': renderAdminTkKapal, 'admin-tk-jadwal': renderAdminTkJadwal, 'admin-tk-laporan': renderAdminTkLaporan, 'admin-tk-set': renderAdminPengaturan
