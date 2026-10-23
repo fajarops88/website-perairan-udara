@@ -365,54 +365,42 @@ async function renderSambutan() {
 }
 
 const avatar = (p, size) => p.foto ? '<img src="' + esc(p.foto) + '" alt="Foto ' + esc(p.nama) + '" loading="lazy" class="' + size + ' rounded-full object-cover bg-surface-container">' : '<div class="' + size + ' rounded-full bg-surface-container-high text-outline flex items-center justify-center">' + ic('person', '!text-[28px]') + '</div>';
+// Bagan organisasi bergaya gelap (foto berbingkai emas). Staf ditempatkan di bawah Kepala Seksi masing-masing.
 async function renderStruktur() {
   const d = await pub('struktur');
-  const box = (p, lead) => '<div class="' + CARD + ' p-3 flex items-center gap-2 ' + (lead ? '!bg-primary-container !border-secondary-container/40 text-white' : '') + ' min-w-[168px] max-w-[200px]">' + avatar(p, 'w-9 h-9 shrink-0') +
-    '<div class="min-w-0"><div class="text-[9.5px] uppercase tracking-wide ' + (lead ? 'text-secondary-fixed' : 'text-secondary') + ' font-bold leading-tight">' + esc(p.jabatan) + '</div><div class="font-headline font-semibold text-sm leading-snug">' + esc(p.nama) + '</div></div></div>';
+  const W = window.innerWidth, PER = W < 640 ? 1 : 3, SIDE = W >= 1024; // kolom staf per baris; cabang berdampingan hanya di layar lebar
+  const av = (p, big) => '<span class="org-av' + (big ? ' big' : '') + '">' + (p.foto ? '<img src="' + esc(p.foto) + '" alt="Foto ' + esc(p.nama) + '" loading="lazy">' : ic('person', big ? '!text-[34px]' : '!text-[26px]')) + '</span>';
+  const card = (p, lead) => '<div class="org-card' + (lead ? ' lead' : '') + '">' + av(p, lead) + '<div class="org-name">' + esc(p.nama) + '</div><div class="org-jab">' + esc(p.jabatan) + '</div></div>';
+  const ln = '<div class="org-ln w-0.5 h-6 mx-auto"></div>';
   const by = k => d.pegawai.filter(p => p.kategori === k);
-  const line = '<div class="w-0.5 h-6 bg-secondary mx-auto"></div>';
-  const row = arr => '<div class="flex flex-wrap justify-center gap-4">' + arr.map(p => box(p)).join('') + '</div>';
   const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
-  // Satu baris staf (maks 3 orang) dengan garis penghubung per orang yang benar-benar tersambung
-  // ke garis di atasnya: garis tengah turun, lalu bercabang rata ke tiap orang di baris itu.
-  const combRow = arr => {
-    if (arr.length === 1) return line + box(arr[0]);
-    const kids = arr.map((p, i) => {
-      const half = '<div class="absolute top-0 h-0.5 bg-secondary" style="' + (i === 0 ? 'left:50%;right:0' : i === arr.length - 1 ? 'left:0;right:50%' : 'left:0;right:0') + '"></div>';
-      return '<div class="flex flex-col items-center relative px-2 shrink-0">' + half + '<div class="w-0.5 h-4 bg-secondary mx-auto"></div>' + box(p) + '</div>';
-    }).join('');
-    return line + '<div class="flex flex-nowrap justify-center">' + kids + '</div>';
+  const bar = (i, n, only) => (only ? '' : '<div class="org-ln absolute top-0 h-0.5" style="' + (i === 0 ? 'left:50%;right:0' : i === n - 1 ? 'left:0;right:50%' : 'left:0;right:0') + '"></div>');
+  // Satu baris staf: garis tengah turun, lalu bercabang rata ke tiap kartu pada baris itu.
+  const comb = arr => {
+    if (arr.length === 1) return ln + card(arr[0]);
+    return ln + '<div class="flex flex-nowrap justify-center">' + arr.map((p, i) =>
+      '<div class="flex flex-col items-center relative px-1.5 shrink-0">' + bar(i, arr.length) + '<div class="org-ln w-0.5 h-4 mx-auto"></div>' + card(p) + '</div>').join('') + '</div>';
   };
-  // Staf dipecah jadi baris berisi maks 3 orang; tiap baris tersambung penuh (combRow), dan antar
-  // baris disambung garis tengah yang menerus dari atas ke bawah — jadi seluruh staf tetap terhubung
-  // ke Kasi meski jumlahnya banyak dan turun ke beberapa baris.
-  const staffTree = arr => chunk(arr, 3).map(r => '<div class="flex flex-col items-center pt-4 first:pt-0">' + combRow(r) + '</div>').join('');
+  const tree = arr => chunk(arr, PER).map(r => '<div class="flex flex-col items-center pt-4 first:pt-0">' + comb(r) + '</div>').join('');
   const kabid = by(d.kategori[0]);
   const SEKSI_MAP = [[d.kategori[1], 'Kepelabuhanan dan Kebandarudaraan'], [d.kategori[2], 'ASDP']];
   const staf = by(d.kategori[3]);
   const stafOf = seksi => staf.filter(p => p.seksi === seksi);
   const stafLain = staf.filter(p => !SEKSI_MAP.some(x => x[1] === p.seksi));
-  // Cabang (Kasi) disusun berdampingan (shrink-0: tidak boleh diperas jadi sempit) supaya garis
-  // horizontal penghubung dari Kabid tetap tersambung, dan tiap cabang punya cukup ruang untuk stafnya.
   const cabangList = SEKSI_MAP.map(([kat, seksi]) => {
-    const kasiOrang = by(kat), bawahan = stafOf(seksi);
-    return (!kasiOrang.length && !bawahan.length) ? null : { kasiOrang, bawahan };
+    const kasi = by(kat), bawahan = stafOf(seksi);
+    return (!kasi.length && !bawahan.length) ? null : { kasi, bawahan };
   }).filter(Boolean);
-  const cabang = cabangList.map((c, i) => {
-    // Separuh garis horizontal hanya tampil saat cabang berdampingan (layar cukup lebar, md ke atas).
-    // Kalau ruang tidak cukup, cabang otomatis turun/susun ke bawah dan garis horizontal ini disembunyikan
-    // supaya tidak terlihat terputus — tiap cabang tetap tergantung rapi dari garis tengah di atasnya.
-    const half = cabangList.length > 1 ? '<div class="hidden md:block absolute top-0 h-0.5 bg-secondary" style="' + (i === 0 ? 'left:50%;right:0' : i === cabangList.length - 1 ? 'left:0;right:50%' : 'left:0;right:0') + '"></div>' : '';
-    return '<div class="flex flex-col items-center relative px-5 shrink-0">' + half + line +
-      (c.kasiOrang.length ? row(c.kasiOrang) : emptyBox('person_off', 'Kepala seksi belum diisi.')) +
-      (c.bawahan.length ? '<div class="flex flex-col items-center">' + line + '<div class="pt-4">' + staffTree(c.bawahan) + '</div></div>' : '') + '</div>';
-  }).join('');
+  const cabang = cabangList.map((c, i) =>
+    '<div class="flex flex-col items-center relative px-4 shrink-0">' + (SIDE ? bar(i, cabangList.length, cabangList.length < 2) : '') + ln +
+    (c.kasi.length ? '<div class="flex flex-wrap justify-center gap-3">' + c.kasi.map(p => card(p)).join('') + '</div>' : '<div class="org-card"><div class="org-jab">Kepala seksi belum diisi.</div></div>') +
+    (c.bawahan.length ? '<div class="flex flex-col items-center">' + ln + '<div class="pt-0">' + tree(c.bawahan) + '</div></div>' : '') + '</div>').join('');
   const html = wrap(sectionTitle('Profil', 'Struktur Organisasi', 'Bagan disusun otomatis dari data Pejabat & Pegawai. Staf dikelompokkan di bawah Kepala Seksi masing-masing.') +
-    '<div class="' + CARD + ' p-4 md:p-6 overflow-x-auto"><div class="flex flex-col items-center w-max min-w-full gap-0">' +
-    (kabid.length ? '<div class="flex justify-center">' + box(kabid[0], true) + '</div>' : '') +
-    (cabangList.length ? line + '<div class="flex flex-col items-center gap-10 md:flex-row md:flex-nowrap md:items-start md:justify-center md:gap-0 pt-6">' + cabang + '</div>' : '') +
-    (stafLain.length ? line + '<div class="w-full"><div class="text-center text-xs font-bold uppercase tracking-wider text-outline mb-3">Staf Lainnya</div><div class="flex flex-col items-center">' + staffTree(stafLain) + '</div></div>' : '') +
-    (!d.pegawai.length ? '<p class="text-outline">Belum ada data.</p>' : '') + '</div></div>');
+    '<div class="org-panel"><div class="flex flex-col items-center w-max min-w-full gap-0">' +
+    (kabid.length ? card(kabid[0], true) : '') +
+    (cabangList.length ? ln + '<div class="' + (SIDE ? 'flex flex-row flex-nowrap items-start justify-center' : 'org-spine flex flex-col items-center gap-8') + '">' + cabang + '</div>' : '') +
+    (stafLain.length ? ln + '<div class="org-label">Staf Lainnya</div><div class="flex flex-col items-center">' + tree(stafLain) + '</div>' : '') +
+    (!d.pegawai.length ? '<p class="org-jab">Belum ada data.</p>' : '') + '</div></div>');
   return { html: html };
 }
 async function renderPegawai() {

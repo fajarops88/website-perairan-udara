@@ -53,3 +53,17 @@ html { scroll-behavior: smooth; }
     * { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
   }
   ::-webkit-scrollbar { height: 8px; width: 8px; } ::-webkit-scrollbar-thumb { background: #c3c6ce; border-radius: 8px; }
+
+/* Bagan organisasi (halaman Struktur) */
+.org-panel { background: #0a1224; border-radius: 12px; padding: 28px 16px 32px; overflow-x: auto; }
+.org-card { position: relative; z-index: 1; width: 176px; min-height: 124px; box-sizing: border-box; background: #0f1f3a; border: 1px solid #243759; border-radius: 10px; padding: 14px 10px 12px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.org-card.lead { width: 232px; border: 2px solid #a9c7ff; box-shadow: 0 0 0 1px rgba(169,199,255,.18); }
+.org-av { width: 52px; height: 52px; flex: none; border-radius: 9999px; border: 3px solid #d9a521; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #1a2b4a; color: #9db0cf; }
+.org-av.big { width: 66px; height: 66px; }
+.org-av img { width: 100%; height: 100%; object-fit: cover; }
+.org-name { font-weight: 700; font-size: 14px; line-height: 1.25; color: #7fa8ff; }
+.org-jab { font-size: 12px; line-height: 1.3; color: #9db0cf; }
+.org-ln { background: #2e4570; }
+.org-label { margin: 14px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #9db0cf; }
+.org-spine { position: relative; }
+.org-spine::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #2e4570; }
