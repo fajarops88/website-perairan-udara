@@ -576,6 +576,10 @@ async function renderKontak() {
 /* =====================================================================
    LOGIN & ADMIN
    ===================================================================== */
+// Pemanasan server sebelum login (cache data publik); maks 1x/4 menit, tanpa membaca respons.
+function warmServer() {
+  try { const t = Number(sessionStorage.getItem('warm_t') || 0); if (Date.now() - t < 240000 || !window.GAS_URL || /XXXX/.test(window.GAS_URL)) return; sessionStorage.setItem('warm_t', String(Date.now())); fetch(window.GAS_URL + '?w=1', { mode: 'no-cors' }).catch(() => { }); } catch (e) { /* abaikan */ }
+}
 async function renderLogin() {
   const html = '<div class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-surface-container-high/50 to-background"><div class="' + CARD + ' w-full max-w-md p-8 shadow-xl">' +
     '<div class="flex items-center gap-3 mb-6"><span class="w-11 h-11 rounded bg-primary-container text-white flex items-center justify-center">' + ic('admin_panel_settings') + '</span><div><div class="text-xs font-bold uppercase text-secondary tracking-wider">Akses khusus admin</div><h1 class="font-headline text-xl font-bold text-primary-container">Portal Masuk Administrator</h1></div></div>' +
@@ -584,6 +588,7 @@ async function renderLogin() {
     '<div id="login-err" class="hidden text-sm text-error font-semibold" role="alert"></div><button type="submit" class="' + BTN_P + ' w-full">' + ic('login', '!text-[18px]') + ' Masuk</button></form>' +
     '<button type="button" data-nav="home" class="mt-5 text-sm text-secondary font-semibold hover:underline inline-flex items-center gap-1">' + ic('arrow_back', '!text-[16px]') + ' Kembali ke portal publik</button></div></div>';
   return { html: html, init: () => {
+    warmServer();
     const f = $('#login-form');
     $('#pw-toggle').addEventListener('click', () => { f.p.type = f.p.type === 'password' ? 'text' : 'password'; });
     f.addEventListener('submit', async e => {
@@ -601,7 +606,8 @@ async function renderLogin() {
 }
 
 const ADMIN_NAV = [['admin-dashboard', 'dashboard', 'Dashboard'], ['admin-pengaduan', 'mark_email_unread', 'Pengaduan'], ['admin-survei', 'star', 'Hasil Survei'], ['admin-konten', 'newspaper', 'Kelola Konten'], ['admin-pengaturan', 'admin_panel_settings', 'Pengaturan & Log'],
-  ['', '', 'SIDIKAPET \u2014 Tiket Kapal'], ['admin-tk-dash', 'sailing', 'Dasbor Tiket'], ['admin-tk-pesan', 'point_of_sale', 'Pesan Tiket (Loket)'], ['admin-tk-tiket', 'receipt_long', 'Tiket & Penumpang'], ['admin-tk-kapal', 'directions_boat', 'Data Kapal'], ['admin-tk-jadwal', 'calendar_month', 'Rute & Jadwal'], ['admin-tk-laporan', 'analytics', 'Laporan Tiket']];
+  ['', '', 'SIDIKAPET \u2014 Tiket Kapal'], ['admin-tk-dash', 'sailing', 'Dasbor Tiket'], ['admin-tk-pesan', 'point_of_sale', 'Pesan Tiket (Loket)'], ['admin-tk-tiket', 'receipt_long', 'Tiket & Penumpang'], ['admin-tk-kapal', 'directions_boat', 'Data Kapal'], ['admin-tk-jadwal', 'calendar_month', 'Rute & Jadwal'], ['admin-tk-laporan', 'analytics', 'Laporan Tiket'],
+  ['', '', 'WhatsApp & CRM'], ['admin-wa', 'forum', 'WhatsApp & Notifikasi'], ['admin-crm', 'contacts', 'CRM Kontak']];
 function adminLayout(active, title, inner, actions) {
   return '<div class="min-h-screen bg-surface md:flex"><aside class="md:w-64 md:fixed md:inset-y-0 bg-white border-b md:border-b-0 md:border-r border-[#E2E8F0] flex md:flex-col z-30">' +
     '<div class="hidden md:flex items-center gap-3 px-5 h-16 border-b border-[#E2E8F0]"><span class="w-9 h-9 rounded bg-primary-container text-white flex items-center justify-center">' + ic('anchor') + '</span><div class="leading-tight"><div class="font-headline font-bold text-primary-container">PANEL ADMIN</div><div class="text-[11px] text-on-surface-variant uppercase">Perairan & Udara</div></div></div>' +
@@ -1267,12 +1273,233 @@ document.addEventListener('click', async e => {
   }
 });
 
+/* =====================================================================
+   WHATSAPP (Fonnte) + EMAIL + CRM KONTAK — halaman admin
+   Halaman: admin-wa (Blast · Antrean · Konfigurasi), admin-crm (CRM Kontak)
+   Token Fonnte hanya dikirim ke server; layar hanya menampilkan versi tersamar.
+   ===================================================================== */
+const nfAdm = (op, a, b) => { const args = ['adminNotif', op]; if (a !== undefined) args.push(a); if (b !== undefined) args.push(b); return adm.apply(null, args).then(r => r.data); };
+const NF = { tab: 'blast', aud: null, pilih: {}, konfig: null };
+const NF_BADGE = { Terdaftar: ['bg-[#ECFDF5] border-[#A7F3D0] text-[#047857]', '✓ WA'], 'Tidak Terdaftar': ['bg-[#FEF2F2] border-[#FECACA] text-[#B91C1C]', '✕ bukan WA'] };
+const nfWaBadge = s => { const b = NF_BADGE[s] || ['bg-slate-100 border-slate-200 text-slate-600', '? belum dicek']; return '<span class="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap ' + b[0] + '">' + b[1] + '</span>'; };
+const nfStatusBadge = s => tkBadge({ Terkirim: 'Lunas', Antri: 'Kritis', Gagal: 'Batal', Batal: 'Kedaluwarsa', Berjalan: 'Kritis', Selesai: 'Lunas', Dihentikan: 'Kedaluwarsa' }[s] || 'Info', s);
+const nfKpi = (l, v, sub) => '<div class="' + CARD + ' p-4"><div class="text-xs uppercase font-bold text-on-surface-variant tracking-wide">' + l + '</div><div class="font-headline text-2xl font-bold text-primary-container mt-1">' + v + '</div>' + (sub ? '<div class="text-xs text-on-surface-variant mt-1">' + sub + '</div>' : '') + '</div>';
+const nfSel = (id, opts, val) => '<select id="' + id + '" class="' + INP + '">' + opts.map(o => '<option value="' + esc(o[0]) + '"' + (String(o[0]) === String(val) ? ' selected' : '') + '>' + esc(o[1]) + '</option>').join('') + '</select>';
+
+/* ---------- Halaman WhatsApp & Notifikasi ---------- */
+async function renderAdminWa() {
+  NF.konfig = await nfAdm('konfig'); NF.aud = null; NF.pilih = {};
+  const k = NF.konfig, tabs = [['blast', 'campaign', 'Blast WhatsApp'], ['antrean', 'outgoing_mail', 'Antrean & Riwayat'], ['konfig', 'tune', 'Konfigurasi']];
+  const inner = '<div class="flex gap-2 mb-5 overflow-x-auto" role="tablist">' + tabs.map(x => '<button type="button" role="tab" data-nftab="' + x[0] + '" class="' + BTN_S + ' !min-h-[40px] whitespace-nowrap">' + ic(x[1], '!text-[18px]') + x[2] + '</button>').join('') + '</div>' +
+    (k.waAktif ? '' : '<div class="' + CARD + ' p-4 mb-5 border-[#FDE68A] bg-[#FFFBEB] text-sm text-[#B45309]">WhatsApp belum aktif. Isi token Fonnte dan nyalakan saklar di tab <b>Konfigurasi</b> agar notifikasi dan blast dapat dikirim.</div>') +
+    '<div id="nf-blast"></div><div id="nf-antrean" class="hidden"></div><div id="nf-konfig" class="hidden"></div>';
+  return { html: adminLayout('admin-wa', 'WhatsApp & Notifikasi', inner), init: () => {
+    nfBlastInit(); nfAntreanInit(); nfKonfigInit();
+    const tampil = t => { NF.tab = t; ['blast', 'antrean', 'konfig'].forEach(x => $('#nf-' + x).classList.toggle('hidden', x !== t)); $$('[data-nftab]').forEach(b => { const on = b.dataset.nftab === t; b.className = (on ? BTN_P : BTN_S) + ' !min-h-[40px] whitespace-nowrap'; }); if (t === 'antrean') nfAntreanMuat(); };
+    $$('[data-nftab]').forEach(b => b.addEventListener('click', () => tampil(b.dataset.nftab))); tampil(NF.tab);
+  } };
+}
+
+/* --- Tab Blast --- */
+function nfBlastInit() {
+  const k = NF.konfig, box = $('#nf-blast');
+  box.innerHTML = '<div class="grid gap-6 xl:grid-cols-2 items-start"><div class="' + CARD + ' p-5 space-y-4"><h2 class="font-headline font-bold text-primary-container">1. Pilih sasaran</h2>' +
+    '<div class="grid sm:grid-cols-3 gap-3">' + field('Segmen', '<select id="bSeg" class="' + INP + '"><option value="">Semua segmen</option></select>') + field('Status WA', nfSel('bSt', [['', 'Semua'], ['Terdaftar', 'Terdaftar WA'], ['Tidak Terdaftar', 'Bukan WA'], ['belum', 'Belum dicek']], '')) + field('Tag', '<input id="bTag" class="' + INP + '" maxlength="60">') + '</div>' +
+    '<div class="flex flex-wrap gap-2"><button type="button" id="bMuat" class="' + BTN_S + '">' + ic('group', '!text-[18px]') + ' Muat penerima</button><button type="button" id="bCek" class="' + BTN_S + '">' + ic('verified', '!text-[18px]') + ' Cek nomor WA</button></div>' +
+    '<div id="bRingkas" class="text-sm text-on-surface-variant"></div><div id="bTabel" class="max-h-[420px] overflow-auto border border-[#E2E8F0] rounded"></div></div>' +
+    '<div class="' + CARD + ' p-5 space-y-4"><h2 class="font-headline font-bold text-primary-container">2. Tulis pesan</h2>' + field('Judul (internal)', '<input id="bJudul" class="' + INP + '" maxlength="120">') +
+    field('Isi pesan', '<textarea id="bPesan" rows="6" class="' + INP + '" maxlength="1500" placeholder="Halo {nama}, ..."></textarea>', 'Variabel: {nama}, {instansi}, {link}. Pesan WhatsApp mendukung *tebal*.') +
+    '<div><div class="text-xs font-bold uppercase text-on-surface-variant mb-1">Pratinjau</div><div id="bPrev" class="rounded-lg bg-[#DCF8C6] p-3 text-sm whitespace-pre-wrap min-h-[48px]"></div></div>' +
+    '<div class="grid sm:grid-cols-2 gap-3">' + field('Ukuran batch / putaran', nfSel('bBatch', [[10, '10 pesan'], [20, '20 pesan'], [50, '50 pesan']], k.batch)) + field('Jeda antarpesan (detik)', '<input id="bJeda" class="' + INP + '" value="' + esc(k.jeda) + '" placeholder="5 atau 3-8">', 'Jeda acak mengurangi risiko nomor diblokir.') + '</div>' +
+    '<div id="bInfo" class="text-sm text-on-surface-variant"></div><button type="button" id="bMulai" class="' + BTN_A + ' w-full">' + ic('rocket_launch', '!text-[18px]') + ' Mulai blast</button></div></div>' +
+    '<div class="' + CARD + ' mt-6 overflow-hidden"><div class="p-5 border-b border-[#F1F5F9] flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-headline font-bold text-primary-container">Riwayat & progres blast</h2><p class="text-sm text-on-surface-variant">Server mengirim 1 batch tiap menit walau halaman ditutup.</p></div><label class="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" id="nf-auto" class="w-4 h-4 accent-[#0F2942]"> Otomatis kirim batch berikutnya</label></div><div id="bRiwayat">' + tkLoading + '</div></div>';
+  nfAdm('crmStats').then(s => { const o = $('#bSeg'); if (o) Object.keys(s.segmen).forEach(g => { o.insertAdjacentHTML('beforeend', '<option value="' + esc(g) + '">' + esc(g) + ' (' + s.segmen[g] + ')</option>'); }); }).catch(() => { });
+  const prev = () => { const p = $('#bPesan').value || ''; const sample = NF.aud && NF.aud.rows[0] ? NF.aud.rows[0].nama : 'Budi'; $('#bPrev').textContent = p ? p.replace(/\{nama\}/g, sample || 'Bapak/Ibu').replace(/\{instansi\}/g, 'Dinas Perhubungan Kota Balikpapan').replace(/\{link\}/g, k.appUrl || '') : 'Pratinjau pesan tampil di sini.'; };
+  const hitung = () => { const n = Object.keys(NF.pilih).length, b = Number($('#bBatch').value) || 10, j = ($('#bJeda').value || '5').split('-').map(Number), jr = (j.reduce((a, c) => a + c, 0) / j.length) || 5; const bt = Math.ceil(n / b); $('#bInfo').textContent = n ? n + ' penerima → ' + bt + ' batch (±' + Math.max(1, Math.round(n * jr / 60)) + ' menit pengiriman)' : 'Belum ada penerima dipilih.'; $('#bMulai').lastChild.textContent = ' Mulai blast' + (n ? ' (' + n + ' nomor)' : ''); };
+  const tabel = () => {
+    const a = NF.aud; if (!a) return;
+    $('#bRingkas').innerHTML = 'Total ' + a.ringkas.total + ' · valid ' + a.ringkas.valid + ' · tidak valid ' + a.ringkas.tidakValid + ' · ganda ' + a.ringkas.ganda + ' · opt-out ' + a.ringkas.optOut + ' · terdaftar WA ' + a.ringkas.terdaftar + (a.terpotong ? ' <b>(dibatasi ' + a.rows.length + ' baris)</b>' : '');
+    $('#bTabel').innerHTML = a.rows.length ? '<table class="w-full text-sm"><thead class="bg-surface-container text-xs uppercase text-on-surface-variant sticky top-0"><tr><th class="p-2 w-8"><input type="checkbox" id="bAll" class="accent-[#0F2942]"></th><th class="p-2 text-left">Nama</th><th class="p-2 text-left">Nomor</th><th class="p-2 text-left">WA</th></tr></thead><tbody class="divide-y divide-[#F1F5F9]">' +
+      a.rows.slice(0, 300).map(r => { const ok = r.valid && !r.ganda && !r.optOut; return '<tr class="' + (ok ? '' : 'opacity-50') + '"><td class="p-2"><input type="checkbox" data-pil="' + esc(r.id) + '" class="accent-[#0F2942]"' + (NF.pilih[r.id] ? ' checked' : '') + (ok ? '' : ' disabled') + '></td><td class="p-2">' + esc(r.nama) + (r.optOut ? ' <span class="text-xs text-error">opt-out</span>' : '') + (r.ganda ? ' <span class="text-xs text-outline">ganda</span>' : '') + '</td><td class="p-2 font-mono text-xs">' + esc(r.hp || '-') + '</td><td class="p-2">' + nfWaBadge(r.statusWA) + '</td></tr>'; }).join('') + '</tbody></table>' + (a.rows.length > 300 ? '<div class="p-2 text-xs text-on-surface-variant">Menampilkan 300 pertama dari ' + a.rows.length + '. "Pilih semua" mencakup seluruh baris yang valid.</div>' : '') : tkKosong('Tidak ada kontak. Sinkronkan di menu CRM Kontak.');
+    $('#bAll') && $('#bAll').addEventListener('change', e => { NF.pilih = {}; if (e.target.checked) a.rows.forEach(r => { if (r.valid && !r.ganda && !r.optOut) NF.pilih[r.id] = true; }); $$('[data-pil]').forEach(c => { c.checked = !c.disabled && e.target.checked; }); hitung(); });
+    $$('[data-pil]').forEach(c => c.addEventListener('change', () => { if (c.checked) NF.pilih[c.dataset.pil] = true; else delete NF.pilih[c.dataset.pil]; hitung(); }));
+    hitung(); prev();
+  };
+  $('#bMuat').addEventListener('click', e => tkRun(e.currentTarget, async () => { NF.aud = await nfAdm('audience', { segmen: $('#bSeg').value, statusWA: $('#bSt').value, tag: $('#bTag').value.trim() }); NF.pilih = {}; tabel(); }));
+  $('#bCek').addEventListener('click', e => tkRun(e.currentTarget, async () => {
+    if (!NF.aud) throw new Error('Muat penerima dulu.');
+    const hp = NF.aud.rows.filter(r => r.valid && !r.statusWA).map(r => r.hp); if (!hp.length) { toast('Semua nomor sudah dicek.', 'warn'); return; }
+    let ok = 0; for (let i = 0; i < hp.length; i += 50) { const r = await nfAdm('validasi', hp.slice(i, i + 50)); ok += r.dicek; toast('Mengecek ' + Math.min(i + 50, hp.length) + '/' + hp.length + '...', 'warn'); }
+    NF.aud = await nfAdm('audience', { segmen: $('#bSeg').value, statusWA: $('#bSt').value, tag: $('#bTag').value.trim() }); NF.pilih = {}; tabel(); toast(ok + ' nomor dicek.');
+  }));
+  $('#bPesan').addEventListener('input', prev); $('#bBatch').addEventListener('change', hitung); $('#bJeda').addEventListener('input', hitung); prev(); hitung();
+  $('#bMulai').addEventListener('click', async e => {
+    const ids = Object.keys(NF.pilih); if (!ids.length) { toast('Pilih penerima dulu.', 'error'); return; }
+    if (!await tkConfirm('Mulai blast WhatsApp', 'Kirim pesan ke ' + ids.length + ' nomor dalam batch ' + $('#bBatch').value + '? Pesan tidak dapat ditarik setelah terkirim.', 'Ya, mulai')) return;
+    await tkRun(e.currentTarget, async () => { const r = await nfAdm('blastBuat', { judul: $('#bJudul').value, pesan: $('#bPesan').value, ukuranBatch: Number($('#bBatch').value), jeda: $('#bJeda').value, kontakIds: ids, sasaran: ($('#bSeg').value || 'Semua') }); toast('Blast dibuat: ' + r.total + ' nomor.'); NF.pilih = {}; NF.aud = null; $('#bTabel').innerHTML = ''; $('#bRingkas').textContent = ''; hitung(); nfRiwayat(); });
+  });
+  nfRiwayat();
+  const loop = async () => { const c = $('#nf-auto'); if (!c) return; if (c.checked && NF.tab === 'blast' && document.visibilityState === 'visible') { try { const l = await nfAdm('blastList'); const run = l.find(b => b.status === 'Berjalan'); if (run) { await nfAdm('blastProses', run.id); nfRiwayat(); } } catch (x) { /* abaikan */ } } setTimeout(loop, 45000); };
+  setTimeout(loop, 45000);
+}
+async function nfRiwayat() {
+  const box = $('#bRiwayat'); if (!box) return;
+  try {
+    const l = await nfAdm('blastList'); const b2 = $('#bRiwayat'); if (!b2) return;
+    b2.innerHTML = l.length ? '<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-surface-container text-xs uppercase text-on-surface-variant"><tr><th class="p-3 text-left">Judul</th><th class="p-3 text-left">Sasaran</th><th class="p-3 text-left">Progres</th><th class="p-3 text-left">Status</th><th class="p-3"></th></tr></thead><tbody class="divide-y divide-[#F1F5F9]">' +
+      l.map(b => '<tr><td class="p-3"><b>' + esc(b.judul) + '</b><div class="text-xs text-on-surface-variant">' + esc(fmtDateTime(b.tanggal)) + ' · batch ' + b.batch + ' · jeda ' + esc(b.jeda) + '</div></td><td class="p-3">' + esc(b.sasaran) + '</td><td class="p-3 min-w-[160px]"><div class="h-2 rounded-full bg-surface-container-high overflow-hidden"><div class="h-full bg-secondary" style="width:' + b.persen + '%"></div></div><div class="text-xs mt-1">' + b.terkirim + ' terkirim · ' + b.gagal + ' gagal · sisa ' + b.sisa + ' / ' + b.total + '</div></td><td class="p-3">' + nfStatusBadge(b.status) + '</td><td class="p-3 whitespace-nowrap">' +
+        (b.status === 'Berjalan' ? '<button type="button" data-bp="' + esc(b.id) + '" class="' + BTN_S + ' !min-h-[36px] !px-3">Kirim batch</button> <button type="button" data-bs="' + esc(b.id) + '" class="text-error text-sm font-semibold px-2">Hentikan</button>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : tkKosong('Belum ada blast.', 'campaign');
+    $$('[data-bp]', b2).forEach(x => x.addEventListener('click', () => tkRun(x, async () => { const r = await nfAdm('blastProses', x.dataset.bp); toast(r.terkirim + ' terkirim, ' + r.gagal + ' gagal.'); nfRiwayat(); })));
+    $$('[data-bs]', b2).forEach(x => x.addEventListener('click', async () => { if (!await tkConfirm('Hentikan blast', 'Pesan yang belum terkirim akan dibatalkan.', 'Ya, hentikan')) return; await tkRun(null, async () => { const r = await nfAdm('blastStop', x.dataset.bs); toast(r.dibatalkan + ' pesan dibatalkan.'); nfRiwayat(); }); }));
+  } catch (x) { if (x.message !== 'SESI') box.innerHTML = tkKosong(x.message); }
+}
+
+/* --- Tab Antrean --- */
+function nfAntreanInit() {
+  $('#nf-antrean').innerHTML = '<div id="aKpi" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 mb-5"></div><div class="' + CARD + ' p-4 mb-5 flex flex-wrap items-end gap-3">' + field('Status', nfSel('aSt', [['', 'Semua'], ['Antri', 'Menunggu'], ['Terkirim', 'Terkirim'], ['Gagal', 'Gagal'], ['Batal', 'Dibatalkan']], '')) + field('Kanal', nfSel('aKn', [['', 'Semua'], ['WA', 'WhatsApp'], ['EMAIL', 'Email']], '')) +
+    '<button type="button" id="aMuat" class="' + BTN_S + '">' + ic('refresh', '!text-[18px]') + ' Segarkan</button><button type="button" id="aProses" class="' + BTN_P + '">' + ic('send', '!text-[18px]') + ' Proses sekarang</button><button type="button" id="aUlang" class="' + BTN_S + '">' + ic('replay', '!text-[18px]') + ' Ulangi yang gagal</button></div><div class="' + CARD + ' overflow-hidden" id="aTab">' + tkLoading + '</div>';
+  $('#aMuat').addEventListener('click', nfAntreanMuat); $('#aSt').addEventListener('change', nfAntreanMuat); $('#aKn').addEventListener('change', nfAntreanMuat);
+  $('#aProses').addEventListener('click', e => tkRun(e.currentTarget, async () => { const r = await nfAdm('proses'); toast((r.info || (r.terkirim + ' terkirim, ' + r.gagal + ' gagal')) + '.'); nfAntreanMuat(); }));
+  $('#aUlang').addEventListener('click', e => tkRun(e.currentTarget, async () => { const r = await nfAdm('ulangi'); toast(r.diulang + ' pesan diantrekan ulang.'); nfAntreanMuat(); }));
+}
+async function nfAntreanMuat() {
+  const tab = $('#aTab'); if (!tab) return;
+  try {
+    const r = await nfAdm('antrean', { status: $('#aSt').value, kanal: $('#aKn').value }), s = r.ringkas;
+    $('#aKpi').innerHTML = nfKpi('Menunggu', s.Antri) + nfKpi('Terkirim', s.Terkirim) + nfKpi('Gagal', s.Gagal) + nfKpi('Dibatalkan', s.Batal);
+    tab.innerHTML = r.rows.length ? '<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-surface-container text-xs uppercase text-on-surface-variant"><tr><th class="p-3 text-left">Waktu</th><th class="p-3 text-left">Kanal</th><th class="p-3 text-left">Tujuan</th><th class="p-3 text-left">Peristiwa</th><th class="p-3 text-left">Pesan</th><th class="p-3 text-left">Status</th></tr></thead><tbody class="divide-y divide-[#F1F5F9]">' +
+      r.rows.map(x => '<tr><td class="p-3 whitespace-nowrap text-xs">' + esc(fmtDateTime(x.waktu)) + '</td><td class="p-3">' + esc(x.kanal) + '</td><td class="p-3 font-mono text-xs">' + esc(x.tujuan) + '<div class="font-sans text-on-surface-variant">' + esc(x.nama) + '</div></td><td class="p-3 text-xs">' + esc(x.event) + '</td><td class="p-3 max-w-xs truncate" title="' + esc(x.pesan) + '">' + esc(x.pesan) + '</td><td class="p-3">' + nfStatusBadge(x.status) + (x.respon ? '<div class="text-xs text-on-surface-variant">' + esc(x.respon) + '</div>' : '') + '</td></tr>').join('') + '</tbody></table></div>' : tkKosong('Tidak ada pesan.');
+  } catch (x) { if (x.message !== 'SESI') tab.innerHTML = tkKosong(x.message); }
+}
+
+/* --- Tab Konfigurasi --- */
+function nfKonfigInit() {
+  const k = NF.konfig, sw = (id, on, label) => '<label class="flex items-center gap-3 text-sm font-semibold"><input type="checkbox" id="' + id + '" class="w-5 h-5 accent-[#0F2942]"' + (on ? ' checked' : '') + '> ' + label + '</label>';
+  $('#nf-konfig').innerHTML = '<div class="grid gap-6 xl:grid-cols-2 items-start"><div class="' + CARD + ' p-5 space-y-4"><h2 class="font-headline font-bold text-primary-container">WhatsApp (Fonnte)</h2>' + sw('kWa', k.waAktif, 'Notifikasi WhatsApp aktif') +
+    field('Token Fonnte', '<input id="kTok" type="password" autocomplete="off" class="' + INP + '" placeholder="' + (k.tokenAda ? esc(k.token) + ' (tersimpan)' : 'Tempel token dari fonnte.com') + '">', 'Disimpan aman di server (Script Properties), tidak pernah ditampilkan ulang. Kosongkan bila tidak diubah.') +
+    '<div class="flex flex-wrap gap-2"><button type="button" id="kTokSimpan" class="' + BTN_P + '">' + ic('key', '!text-[18px]') + ' Simpan token</button>' + (k.tokenAda ? '<button type="button" id="kTokHapus" class="' + BTN_S + ' !text-error !border-error">Hapus token</button>' : '') + '<button type="button" id="kDev" class="' + BTN_S + '">' + ic('wifi_tethering', '!text-[18px]') + ' Cek perangkat</button></div><div id="kDevHasil" class="text-sm"></div>' +
+    '<div class="grid sm:grid-cols-2 gap-3">' + field('Tes kirim WA ke', '<input id="kTesWa" class="' + INP + '" placeholder="08xxxxxxxxxx">') + field('Nomor WA admin (notifikasi pengaduan baru)', '<input id="kWaAdm" class="' + INP + '" value="' + esc(k.waAdmin) + '" placeholder="08xxxxxxxxxx">') + '</div><button type="button" id="kTesWaBtn" class="' + BTN_S + '">Kirim tes WA</button></div>' +
+    '<div class="' + CARD + ' p-5 space-y-4"><h2 class="font-headline font-bold text-primary-container">Email, batch & situs</h2>' + sw('kEm', k.emailAktif, 'Notifikasi email tambahan aktif') +
+    '<p class="text-xs text-on-surface-variant">Email bawaan (tanda terima pengaduan, e-tiket PDF) tetap terkirim seperti biasa. Saklar ini hanya untuk email tambahan dari matriks di bawah. Sisa kuota email hari ini: <b>' + (k.kuotaEmail == null ? '-' : k.kuotaEmail) + '</b>.</p>' +
+    '<div class="grid sm:grid-cols-2 gap-3">' + field('Ukuran batch bawaan', nfSel('kBatch', [[10, '10'], [20, '20'], [50, '50']], k.batch)) + field('Jeda bawaan (detik)', '<input id="kJeda" class="' + INP + '" value="' + esc(k.jeda) + '">') + '</div>' +
+    field('Alamat situs (untuk {link})', '<input id="kUrl" class="' + INP + '" value="' + esc(k.appUrl) + '" placeholder="https://username.github.io/website-perairan-udara/">') +
+    '<div class="grid sm:grid-cols-2 gap-3"><div class="flex gap-2 items-end">' + field('Tes email ke', '<input id="kTesEm" class="' + INP + '" placeholder="nama@email.com">') + '<button type="button" id="kTesEmBtn" class="' + BTN_S + '">Tes</button></div><div class="text-sm pt-7">Pengirim otomatis: ' + (k.trigger ? '<b class="text-[#047857]">aktif</b> (tiap 1 menit)' : '<b class="text-[#B45309]">belum aktif</b> — aktif otomatis saat saklar dinyalakan') + '</div></div></div></div>' +
+    '<div class="' + CARD + ' mt-6 overflow-hidden"><div class="p-5 border-b border-[#F1F5F9]"><h2 class="font-headline font-bold text-primary-container">Matriks notifikasi otomatis</h2><p class="text-sm text-on-surface-variant">Pilih peristiwa dan kanal. Variabel: ' + esc(k.varInfo) + '</p></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-surface-container text-xs uppercase text-on-surface-variant"><tr><th class="p-3 text-left">Peristiwa</th><th class="p-3">WA</th><th class="p-3">Email</th><th class="p-3"></th></tr></thead><tbody class="divide-y divide-[#F1F5F9]">' +
+    k.matriks.map(m => '<tr><td class="p-3"><b>' + esc(m.label) + '</b><div class="text-xs font-mono text-outline">' + esc(m.kode) + '</div></td><td class="p-3 text-center"><input type="checkbox" data-mw="' + m.kode + '" class="w-5 h-5 accent-[#0F2942]"' + (m.wa ? ' checked' : '') + '></td><td class="p-3 text-center"><input type="checkbox" data-me="' + m.kode + '" class="w-5 h-5 accent-[#0F2942]"' + (m.email ? ' checked' : '') + '></td><td class="p-3 text-right"><button type="button" data-med="' + m.kode + '" class="text-secondary font-semibold">Ubah isi</button></td></tr>' +
+      '<tr id="mr-' + m.kode + '" class="hidden bg-surface-container-low"><td colspan="4" class="p-4 space-y-3">' + field('Subjek email', '<input data-ms="' + m.kode + '" class="' + INP + '" value="' + esc(m.subjek) + '">') + field('Isi pesan', '<textarea data-mp="' + m.kode + '" rows="4" class="' + INP + '">' + esc(m.pesan) + '</textarea>') + '<button type="button" data-mreset="' + m.kode + '" class="text-sm text-secondary font-semibold">Kembalikan bawaan</button></td></tr>').join('') +
+    '</tbody></table></div><div class="p-5 border-t border-[#F1F5F9]"><button type="button" id="kSimpan" class="' + BTN_P + '">' + ic('save', '!text-[18px]') + ' Simpan konfigurasi</button></div></div>';
+  const pada = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+  pada('#kTokSimpan', e => tkRun(e.currentTarget, async () => { const v = $('#kTok').value.trim(); if (!v) throw new Error('Tempel token terlebih dulu.'); const r = await nfAdm('rahasiaSimpan', { kunci: 'FONNTE_TOKEN', nilai: v }); $('#kTok').value = ''; $('#kTok').placeholder = r.samar + ' (tersimpan)'; NF.konfig.tokenAda = true; toast('Token tersimpan.'); }));
+  pada('#kTokHapus', async e => { if (!await tkConfirm('Hapus token', 'WhatsApp akan dinonaktifkan sampai token baru diisi.', 'Ya, hapus')) return; await tkRun(null, async () => { await nfAdm('rahasiaSimpan', { kunci: 'FONNTE_TOKEN', nilai: '__HAPUS__' }); toast('Token dihapus.'); navigateTo('admin-wa', { noHistory: true }); }); });
+  pada('#kDev', e => tkRun(e.currentTarget, async () => { const d = await nfAdm('device'); $('#kDevHasil').innerHTML = d.terhubung ? '<span class="text-[#047857] font-semibold">Terhubung</span> · ' + esc(d.device) + ' · paket ' + esc(d.paket) + ' · kuota ' + esc(d.kuota) : '<span class="text-error font-semibold">Tidak terhubung.</span> ' + esc(d.pesan || 'Pindai ulang QR di fonnte.com.'); }));
+  pada('#kTesWaBtn', e => tkRun(e.currentTarget, async () => { const r = await nfAdm('tes', 'wa', $('#kTesWa').value); toast(r.ok ? 'Tes WA terkirim.' : 'Gagal: ' + r.respon, r.ok ? undefined : 'error'); }));
+  pada('#kTesEmBtn', e => tkRun(e.currentTarget, async () => { await nfAdm('tes', 'email', $('#kTesEm').value); toast('Tes email terkirim.'); }));
+  $$('[data-med]').forEach(b => b.addEventListener('click', () => $('#mr-' + b.dataset.med).classList.toggle('hidden')));
+  $$('[data-mreset]').forEach(b => b.addEventListener('click', () => { const m = k.matriks.find(x => x.kode === b.dataset.mreset); $('[data-ms="' + m.kode + '"]').value = m.subjekDefault; $('[data-mp="' + m.kode + '"]').value = m.pesanDefault; }));
+  pada('#kSimpan', e => tkRun(e.currentTarget, async () => {
+    const mx = {}; k.matriks.forEach(m => { mx[m.kode] = { wa: $('[data-mw="' + m.kode + '"]').checked, email: $('[data-me="' + m.kode + '"]').checked, subjek: $('[data-ms="' + m.kode + '"]').value, pesan: $('[data-mp="' + m.kode + '"]').value }; });
+    NF.konfig = await nfAdm('konfigSimpan', { waAktif: $('#kWa').checked, emailAktif: $('#kEm').checked, batch: Number($('#kBatch').value), jeda: $('#kJeda').value, waAdmin: $('#kWaAdm').value, appUrl: $('#kUrl').value, matriks: mx });
+    toast('Konfigurasi tersimpan.');
+  }));
+}
+
+/* ---------- Halaman CRM Kontak ---------- */
+const CRM = { f: { segmen: '', statusWA: '', q: '', optOut: false, halaman: 1 }, sel: {} };
+async function renderAdminCrm() {
+  CRM.sel = {}; CRM.f = { segmen: '', statusWA: '', q: '', optOut: false, halaman: 1 };
+  const inner = '<div id="cKpi" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-6 mb-5">' + tkLoading + '</div><div id="cSeg" class="flex flex-wrap gap-2 mb-4"></div>' +
+    '<div class="' + CARD + ' p-4 mb-4 flex flex-wrap items-end gap-3">' + field('Cari nama / nomor / email', '<input id="cQ" class="' + INP + ' min-w-[220px]" maxlength="80">') + field('Status WA', nfSel('cSt', [['', 'Semua'], ['Terdaftar', 'Terdaftar WA'], ['Tidak Terdaftar', 'Bukan WA'], ['belum', 'Belum dicek']], '')) +
+    '<label class="flex items-center gap-2 text-sm font-semibold pb-3"><input type="checkbox" id="cOpt" class="w-4 h-4 accent-[#0F2942]"> Hanya opt-out</label>' +
+    '<button type="button" id="cSync" class="' + BTN_S + '">' + ic('sync', '!text-[18px]') + ' Sinkron sekarang</button><button type="button" id="cImp" class="' + BTN_S + '">' + ic('upload_file', '!text-[18px]') + ' Impor CSV</button></div>' +
+    '<div id="cBulk" class="hidden ' + CARD + ' p-3 mb-4 flex flex-wrap items-center gap-2 text-sm"><b id="cBulkN"></b><button type="button" data-cb="tag" class="' + BTN_S + ' !min-h-[36px]">Beri tag</button><button type="button" data-cb="optout" class="' + BTN_S + ' !min-h-[36px]">Opt-out</button><button type="button" data-cb="optin" class="' + BTN_S + ' !min-h-[36px]">Batalkan opt-out</button></div>' +
+    '<div class="' + CARD + ' overflow-hidden" id="cTab">' + tkLoading + '</div><div id="cPage" class="flex items-center justify-between mt-3 text-sm"></div>';
+  return { html: adminLayout('admin-crm', 'CRM Kontak', inner), init: () => { crmInit(); } };
+}
+async function crmStatsMuat() {
+  try {
+    const s = await nfAdm('crmStats'); const el = $('#cKpi'); if (!el) return;
+    el.innerHTML = nfKpi('Total kontak', s.total, 'sinkron: ' + esc(s.sinkronTerakhir ? fmtDateTime(s.sinkronTerakhir) : 'belum pernah')) + nfKpi('Nomor valid', s.wa, s.terdaftar + ' terdaftar WA') + nfKpi('Email valid', s.email) + nfKpi('Belum dicek WA', s.belumDicek) + nfKpi('Opt-out', s.optOut, s.ganda + ' nomor ganda') + nfKpi('Baru 7 hari', s.baru7, s.dihubungi30 + ' dihubungi 30 hari');
+    $('#cSeg').innerHTML = '<button type="button" data-cs="" class="' + (CRM.f.segmen === '' ? BTN_P : BTN_S) + ' !min-h-[36px]">Semua (' + s.total + ')</button>' + Object.keys(s.segmen).map(g => '<button type="button" data-cs="' + esc(g) + '" class="' + (CRM.f.segmen === g ? BTN_P : BTN_S) + ' !min-h-[36px]">' + esc(g) + ' (' + s.segmen[g] + ')</button>').join('');
+    $$('[data-cs]').forEach(b => b.addEventListener('click', () => { CRM.f.segmen = b.dataset.cs; CRM.f.halaman = 1; crmStatsMuat(); crmMuat(); }));
+  } catch (x) { if (x.message !== 'SESI' && $('#cKpi')) $('#cKpi').innerHTML = ''; }
+}
+async function crmMuat() {
+  const tab = $('#cTab'); if (!tab) return;
+  try {
+    const r = await nfAdm('crmList', CRM.f); const t2 = $('#cTab'); if (!t2) return;
+    t2.innerHTML = r.rows.length ? '<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-surface-container text-xs uppercase text-on-surface-variant"><tr><th class="p-3 w-8"></th><th class="p-3 text-left">Nama</th><th class="p-3 text-left">Email</th><th class="p-3 text-left">WhatsApp</th><th class="p-3 text-left">Tag</th><th class="p-3 text-left">Dihubungi</th><th class="p-3"></th></tr></thead><tbody class="divide-y divide-[#F1F5F9]">' +
+      r.rows.map(k => '<tr class="' + (k.valid || k.email ? '' : 'bg-[#FFFBEB]') + '"><td class="p-3"><input type="checkbox" data-cp="' + esc(k.id) + '" class="accent-[#0F2942]"' + (CRM.sel[k.id] ? ' checked' : '') + '></td><td class="p-3"><b>' + esc(k.nama || '-') + '</b><div class="text-xs text-on-surface-variant">' + esc(k.segmen) + (k.optOut ? ' · <span class="text-error">opt-out</span>' : '') + '</div></td><td class="p-3 text-xs">' + esc(k.email || '-') + '</td><td class="p-3"><span class="font-mono text-xs">' + esc(k.hp || '-') + '</span> ' + nfWaBadge(k.statusWA) + '</td><td class="p-3 text-xs">' + esc(k.tag) + '</td><td class="p-3 text-xs">' + k.jumlah + ' pesan' + (k.terakhir ? '<div class="text-on-surface-variant">' + esc(fmtDate(k.terakhir)) + '</div>' : '') + '</td><td class="p-3"><button type="button" data-cd="' + esc(k.id) + '" class="text-secondary font-semibold">Detail</button></td></tr>').join('') + '</tbody></table></div>' : tkKosong('Belum ada kontak. Klik "Sinkron sekarang" untuk mengumpulkan dari tiket, pengaduan, dan data kapal.', 'contacts');
+    const mak = Math.max(1, Math.ceil(r.total / r.per));
+    $('#cPage').innerHTML = '<span>' + r.total + ' kontak · halaman ' + r.halaman + '/' + mak + '</span><span class="flex gap-2"><button type="button" id="cPrev" class="' + BTN_S + ' !min-h-[36px]"' + (r.halaman <= 1 ? ' disabled' : '') + '>Sebelumnya</button><button type="button" id="cNext" class="' + BTN_S + ' !min-h-[36px]"' + (r.halaman >= mak ? ' disabled' : '') + '>Berikutnya</button></span>';
+    $('#cPrev').onclick = () => { CRM.f.halaman--; crmMuat(); }; $('#cNext').onclick = () => { CRM.f.halaman++; crmMuat(); };
+    $$('[data-cp]', t2).forEach(c => c.addEventListener('change', () => { if (c.checked) CRM.sel[c.dataset.cp] = true; else delete CRM.sel[c.dataset.cp]; crmBulkTampil(); }));
+    $$('[data-cd]', t2).forEach(b => b.addEventListener('click', () => crmDetail(b.dataset.cd)));
+  } catch (x) { if (x.message !== 'SESI') tab.innerHTML = tkKosong(x.message); }
+}
+function crmBulkTampil() { const n = Object.keys(CRM.sel).length; $('#cBulk').classList.toggle('hidden', !n); $('#cBulkN').textContent = n + ' dipilih'; }
+function crmInit() {
+  crmStatsMuat(); crmMuat();
+  let tm = null;
+  $('#cQ').addEventListener('input', e => { clearTimeout(tm); tm = setTimeout(() => { CRM.f.q = e.target.value; CRM.f.halaman = 1; crmMuat(); }, 350); });
+  $('#cSt').addEventListener('change', e => { CRM.f.statusWA = e.target.value; CRM.f.halaman = 1; crmMuat(); });
+  $('#cOpt').addEventListener('change', e => { CRM.f.optOut = e.target.checked; CRM.f.halaman = 1; crmMuat(); });
+  $('#cSync').addEventListener('click', e => tkRun(e.currentTarget, async () => { const r = await nfAdm('crmSync'); toast('Sinkron: +' + r.ditambah + ' baru, ' + r.diperbarui + ' diperbarui.'); crmStatsMuat(); crmMuat(); }));
+  $('#cImp').addEventListener('click', crmImporModal);
+  $$('[data-cb]').forEach(b => b.addEventListener('click', async () => {
+    const aksi = b.dataset.cb, ids = Object.keys(CRM.sel); let nilai = '';
+    if (aksi === 'tag') { nilai = await nfTanya('Beri tag', 'Nama tag', ''); if (!nilai) return; }
+    await tkRun(null, async () => { const r = await nfAdm('crmMassal', { ids: ids, aksi: aksi, nilai: nilai }); toast(r.diubah + ' kontak diperbarui.'); CRM.sel = {}; crmBulkTampil(); crmStatsMuat(); crmMuat(); });
+  }));
+}
+function nfTanya(judul, label, awal) {
+  return new Promise(res => {
+    const m = openModal(modalHead(judul) + '<div class="p-6 space-y-4">' + field(label, '<input id="nfT" class="' + INP + '" maxlength="60" value="' + esc(awal) + '">') + '<div class="flex justify-end gap-3"><button type="button" id="nfTn" class="' + BTN_S + '">Batal</button><button type="button" id="nfTy" class="' + BTN_P + '">Simpan</button></div></div>');
+    $('#nfTn', m).onclick = () => { closeModal(); res(''); }; $('#nfTy', m).onclick = () => { const v = $('#nfT').value.trim(); closeModal(); res(v); };
+  });
+}
+async function crmDetail(id) {
+  await tkRun(null, async () => {
+    const d = await nfAdm('crmDetail', id), k = d.kontak;
+    const m = openModal(modalHead('Detail kontak') + '<div class="p-6 space-y-4"><div><div class="font-headline text-lg font-bold">' + esc(k.nama || '-') + '</div><div class="text-sm text-on-surface-variant">' + esc(k.segmen) + ' · ' + esc(k.email || 'tanpa email') + ' · <span class="font-mono">' + esc(k.hp || 'tanpa nomor') + '</span> ' + nfWaBadge(k.statusWA) + '</div>' +
+      (k.hp ? '<a class="text-secondary text-sm font-semibold" target="_blank" rel="noopener" href="https://wa.me/' + esc(k.hp.replace(/^0/, '62')) + '">Buka di WhatsApp</a>' : '') + '</div>' +
+      '<div class="grid sm:grid-cols-2 gap-3">' + field('Tag', '<input id="dTag" class="' + INP + '" maxlength="60" value="' + esc(k.tag) + '">') + '<label class="flex items-center gap-2 text-sm font-semibold pt-7"><input type="checkbox" id="dOpt" class="w-5 h-5 accent-[#0F2942]"' + (k.optOut ? ' checked' : '') + '> Opt-out (tidak menerima blast)</label></div>' +
+      field('Catatan', '<textarea id="dCat" rows="2" class="' + INP + '" maxlength="500">' + esc(k.catatan) + '</textarea>') + '<button type="button" id="dSimpan" class="' + BTN_P + '">Simpan</button>' +
+      '<div class="border-t border-[#E2E8F0] pt-4"><h3 class="font-bold mb-2">Catat interaksi</h3><div class="flex gap-2">' + nfSel('dKn', [['Telepon', 'Telepon'], ['WA Manual', 'WA manual'], ['Kunjungan', 'Kunjungan'], ['Catatan', 'Catatan']], 'Catatan') + '<input id="dRing" class="' + INP + '" maxlength="300" placeholder="Ringkasan"><button type="button" id="dCatat" class="' + BTN_S + '">Tambah</button></div></div>' +
+      '<div><h3 class="font-bold mb-2">Riwayat</h3><ul class="text-sm space-y-1 max-h-48 overflow-auto">' + (d.pesan.concat(d.catatan).length ? d.catatan.map(x => '<li>📝 ' + esc(fmtDateTime(x.waktu)) + ' — ' + esc(x.kanal) + ': ' + esc(x.ringkas) + '</li>').concat(d.pesan.map(x => '<li>✉ ' + esc(fmtDateTime(x.waktu)) + ' — ' + esc(x.kanal) + ' ' + esc(x.ringkas) + ' (' + esc(x.status) + ')</li>')).join('') : '<li class="text-outline">Belum ada riwayat.</li>') + '</ul></div></div>', true);
+    $('#dSimpan', m).onclick = e => tkRun(e.currentTarget, async () => { await nfAdm('crmSimpan', { id: id, tag: $('#dTag').value, catatan: $('#dCat').value, optOut: $('#dOpt').checked }); toast('Tersimpan.'); closeModal(); crmStatsMuat(); crmMuat(); });
+    $('#dCatat', m).onclick = e => tkRun(e.currentTarget, async () => { await nfAdm('crmCatat', { id: id, kanal: $('#dKn').value, ringkasan: $('#dRing').value }); toast('Interaksi dicatat.'); closeModal(); crmDetail(id); });
+  });
+}
+function csvParse(teks) {
+  const baris = String(teks || '').replace(/\r/g, '').split('\n').filter(l => l.trim()); if (baris.length < 2) return [];
+  const sep = baris[0].indexOf(';') > baris[0].indexOf(',') && baris[0].indexOf(';') >= 0 ? ';' : ',';
+  const pecah = l => { const o = []; let cur = '', q = false; for (const c of l) { if (c === '"') q = !q; else if (c === sep && !q) { o.push(cur); cur = ''; } else cur += c; } o.push(cur); return o.map(x => x.trim()); };
+  const h = pecah(baris[0]).map(x => x.toLowerCase()), ix = n => { for (const a of n) { const i = h.indexOf(a); if (i >= 0) return i; } return -1; };
+  const cn = ix(['nama', 'name']), ce = ix(['email']), cw = ix(['wa', 'whatsapp', 'hp', 'no_hp', 'telepon']), cs = ix(['segmen']), ct = ix(['tag']);
+  if (cn < 0 || (ce < 0 && cw < 0)) throw new Error('Header wajib: nama, email, wa (segmen & tag opsional).');
+  return baris.slice(1).map(l => { const c = pecah(l); return { nama: c[cn] || '', email: ce >= 0 ? c[ce] || '' : '', wa: cw >= 0 ? c[cw] || '' : '', segmen: cs >= 0 ? c[cs] || '' : '', tag: ct >= 0 ? c[ct] || '' : '' }; });
+}
+function crmImporModal() {
+  const m = openModal(modalHead('Impor kontak (CSV)') + '<div class="p-6 space-y-4"><p class="text-sm text-on-surface-variant">Header: <b>nama, email, wa</b> (opsional: segmen, tag). Impor aman diulang — kontak yang sama tidak digandakan, dan <b>Pindai dulu</b> tidak menulis apa pun.</p>' +
+    '<div class="flex flex-wrap gap-2"><button type="button" id="iTpl" class="' + BTN_S + ' !min-h-[36px]">Unduh template</button><input type="file" id="iFile" accept=".csv,text/csv" class="text-sm"></div>' +
+    field('Atau tempel isi CSV', '<textarea id="iTeks" rows="6" class="' + INP + ' font-mono text-xs" placeholder="nama,email,wa,segmen\nBudi,budi@x.id,081234567890,Warga"></textarea>') + field('Segmen bawaan (bila kolom segmen kosong)', '<input id="iSeg" class="' + INP + '" value="Impor" maxlength="40">') +
+    '<div id="iHasil" class="text-sm"></div><div class="flex justify-end gap-2"><button type="button" id="iPindai" class="' + BTN_S + '">Pindai (tanpa menulis)</button><button type="button" id="iJalan" class="' + BTN_P + '" disabled>Jalankan impor</button></div></div>', true);
+  const ambil = () => csvParse($('#iTeks').value);
+  $('#iTpl').onclick = () => { const b = new Blob(['nama,email,wa,segmen,tag\nBudi,budi@contoh.id,081234567890,Warga,\n'], { type: 'text/csv' }), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'template-kontak.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
+  $('#iFile').onchange = e => { const f = e.target.files[0]; if (!f) return; if (f.size > 2 * 1048576) { toast('Berkas maksimal 2 MB.', 'error'); return; } const r = new FileReader(); r.onload = () => { $('#iTeks').value = String(r.result); $('#iJalan').disabled = true; }; r.readAsText(f); };
+  $('#iTeks').addEventListener('input', () => { $('#iJalan').disabled = true; });
+  const laporan = r => '<div class="rounded bg-surface-container-low p-3">' + (r.dryRun ? '<b>Hasil pindai:</b> ' : '<b>Selesai:</b> ') + r.sumber + ' baris → <b>' + r.ditambah + '</b> ditambah · ' + r.diperbarui + ' diperbarui · ' + r.dilewati + ' dilewati · ' + r.tidakValid + ' nomor tidak valid</div>';
+  $('#iPindai').onclick = e => tkRun(e.currentTarget, async () => { const rows = ambil(); if (!rows.length) throw new Error('Tidak ada baris data.'); const r = await nfAdm('crmImpor', { rows: rows, dryRun: true, segmenDefault: $('#iSeg').value }); $('#iHasil').innerHTML = laporan(r); $('#iJalan').disabled = r.ditambah + r.diperbarui === 0; });
+  $('#iJalan').onclick = e => tkRun(e.currentTarget, async () => { const r = await nfAdm('crmImpor', { rows: ambil(), dryRun: false, segmenDefault: $('#iSeg').value }); $('#iHasil').innerHTML = laporan(r); $('#iJalan').disabled = true; crmStatsMuat(); crmMuat(); });
+}
+
 /* ---------- Tabel rute & boot ---------- */
 const ROUTES = {
   home: renderHome, profil: renderProfil, sambutan: renderSambutan, struktur: renderStruktur, pegawai: renderPegawai, berita: renderBerita, beritaDetail: renderBeritaDetail, agenda: renderAgenda,
   regulasi: renderRegulasi, sidikapet: renderSidikapet, 'tk-pesan': p => tkPesanPage(p, false), 'tk-cek': renderTkCek, 'tk-jadwal': renderTkJadwal, pengaduan: renderPengaduan, survei: renderSurvei, kontak: renderKontak, login: renderLogin,
   'admin-dashboard': renderAdminDashboard, 'admin-pengaduan': renderAdminPengaduan, 'admin-survei': renderAdminSurvei, 'admin-konten': renderAdminKonten, 'admin-pengaturan': renderAdminPengaturan,
-  'admin-tk-dash': renderAdminTkDash, 'admin-tk-pesan': renderAdminTkPesan, 'admin-tk-tiket': renderAdminTkTiket, 'admin-tk-kapal': renderAdminTkKapal, 'admin-tk-jadwal': renderAdminTkJadwal, 'admin-tk-laporan': renderAdminTkLaporan, 'admin-tk-set': renderAdminPengaturan
+  'admin-tk-dash': renderAdminTkDash, 'admin-tk-pesan': renderAdminTkPesan, 'admin-tk-tiket': renderAdminTkTiket, 'admin-tk-kapal': renderAdminTkKapal, 'admin-tk-jadwal': renderAdminTkJadwal, 'admin-tk-laporan': renderAdminTkLaporan, 'admin-tk-set': renderAdminPengaturan,
+  'admin-wa': renderAdminWa, 'admin-crm': renderAdminCrm
 };
 // Cangkang situs (header, footer, menu) tampil seketika memakai pengaturan tersimpan di peramban;
 // data terbaru diambil bersamaan dengan memuat halaman, lalu cangkang disegarkan.
