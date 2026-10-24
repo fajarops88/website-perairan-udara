@@ -142,7 +142,7 @@ function renderHeader() {
     '<div class="bg-primary-container text-white text-[12px]"><div class="max-w-7xl mx-auto px-4 md:px-6 h-9 flex items-center justify-between gap-4">' +
     '<span class="flex items-center gap-1.5 truncate">' + ic('schedule', '!text-[15px] text-secondary-container') + esc(s.jam_layanan || '') + '</span>' +
     '<span class="hidden md:flex items-center gap-3">' + (s.telepon ? '<span class="flex items-center gap-1">' + ic('call', '!text-[15px] text-secondary-container') + esc(s.telepon) + '</span>' : '') +
-    '<a href="javascript:void(0)" data-nav="login" class="inline-flex items-center gap-1 bg-secondary px-2.5 py-0.5 rounded hover:bg-secondary-container hover:text-on-secondary-container">' + ic('lock', '!text-[14px]') + 'Login Admin</a></span></div></div>' +
+    '</span></div></div>' +
     '<div class="max-w-7xl mx-auto px-4 md:px-6 h-16 xl:h-[72px] flex items-center justify-between gap-4">' +
     '<a href="javascript:void(0)" data-nav="home" class="flex items-center gap-3 min-w-0"><span class="w-10 h-10 rounded bg-primary-container text-white flex items-center justify-center shrink-0">' + ic('anchor') + '</span>' +
     '<span class="flex flex-col min-w-0"><span class="font-headline font-bold text-primary-container leading-tight truncate text-[15px] md:text-base">' + esc((s.nama_bidang || 'Bidang Perairan dan Udara').toUpperCase()) + '</span>' +
