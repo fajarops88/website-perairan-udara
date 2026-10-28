@@ -316,10 +316,11 @@ window.SKOff = (function () {
     let j; try { const r = await App.api('pub.jadwal', {}); j = r.data.filter(x => x.JadwalID === ctx.params.id)[0]; } catch (e) { v.innerHTML = '<div class="wrap"><div class="alert err mt">' + esc(e.message) + '</div></div>'; return; }
     if (!j || j.Status !== 'Terjadwal') { v.innerHTML = '<div class="wrap empty"><div class="ic">⛴️</div><h2>Jadwal tidak tersedia</h2><p>Jadwal ini sudah berangkat, dibatalkan, atau tidak ditemukan.</p><a class="btn" href="#/jadwal">Pilih jadwal lain</a></div>'; return; }
     const maks = Math.max(1, Math.min(Number((App.boot && App.boot.set.MAKS_PENUMPANG) || 10), j.Sisa)), kat = j.Tarif.map(t => t.Kategori), harga = {}; j.Tarif.forEach(t => { harga[t.Kategori] = t.Harga; });
+    if (!kat.length) { v.innerHTML = '<div class="wrap empty"><div class="ic">💳</div><h2>Tarif belum ditetapkan</h2><p>Tarif untuk rute ini belum diatur oleh Dishub, sehingga tiket belum bisa dipesan. Silakan coba lagi nanti atau hubungi loket.</p><a class="btn" href="#/jadwal">Pilih jadwal lain</a></div>'; return; }
     const r2k = j.TarifR2 || [], hargaR2 = {}; r2k.forEach(t => { hargaR2[t.Kategori] = t.Harga; });
     const bisaR2 = j.KuotaR2 > 0 && j.SisaR2 > 0 && r2k.length > 0, maksR2 = Math.max(0, Math.min(Number((App.boot && App.boot.set.MAKS_R2) || 5), j.SisaR2));
     const r2Row = () => '<div class="card flat r2r" style="margin-bottom:10px"><div class="row between"><b>🏍️ Motor <span class="no2"></span></b><button type="button" class="btn sm ghost red rm2" aria-label="Hapus motor">Hapus</button></div><div class="grid g3 mt"><div class="field"><label>Jenis motor *</label><select class="in r2k">' + r2k.map(t => '<option value="' + esc(t.Kategori) + '">' + esc(t.Kategori) + ' — ' + rp(t.Harga) + '</option>').join('') + '</select></div><div class="field"><label>Nomor polisi *</label><input class="in r2p" maxlength="12" placeholder="KT 1234 AB" autocapitalize="characters" autocomplete="off"></div><div class="field"><label>Nama pengendara</label><input class="in r2n" maxlength="80" placeholder="kosong = nama pemesan" autocomplete="off"></div></div></div>';
-    const r2box = bisaR2 ? '<div class="card mb" id="r2box"><div class="row between"><h3 style="margin:0">🏍️ Bawa motor? <span class="mut sm">(opsional)</span></h3><span class="mut sm">Sisa kuota motor ' + j.SisaR2 + ' unit · maks ' + maksR2 + ' per pesanan</span></div><div id="r2l" class="mt"></div><button type="button" class="btn ghost" id="add2">＋ Tambah motor</button><div class="hint">Setiap motor mendapat tiket QR sendiri dan harus disertai minimal 1 penumpang. Nomor polisi dicocokkan petugas saat naik kapal.</div></div>' : (j.KuotaR2 > 0 ? '<div class="alert warn sm">Kuota motor untuk jadwal ini sudah penuh.</div>' : '');
+    const r2box = bisaR2 ? '<div class="card mb" id="r2box"><div class="row between"><h3 style="margin:0">🏍️ Bawa motor? <span class="mut sm">(opsional)</span></h3><span class="mut sm">Sisa kuota motor ' + j.SisaR2 + ' unit · maks ' + maksR2 + ' per pesanan</span></div><div id="r2l" class="mt"></div><button type="button" class="btn ghost" id="add2">＋ Tambah motor</button><div class="hint">Setiap motor mendapat tiket QR sendiri dan harus disertai minimal 1 penumpang. Nomor polisi dicocokkan petugas saat naik kapal.</div></div>' : (j.KuotaR2 > 0 ? '<div class="alert warn sm">' + (j.SisaR2 > 0 && !r2k.length ? 'Tarif motor untuk rute ini belum ditetapkan, sehingga motor belum bisa dipesan lewat web. Hubungi loket.' : 'Kuota motor untuk jadwal ini sudah penuh.') + '</div>' : '');
     const t0 = Date.now(); let n = 0;
     App.waTeks = 'Halo Dishub, saya ingin memesan tiket ' + j.Asal + ' → ' + j.Tujuan + ' tanggal ' + tgl(j.Berangkat) + ' pukul ' + jam(j.Berangkat) + '.';
     const rowHtml = () => { const i = ++n; return '<div class="card flat pn" data-i="' + i + '" style="margin-bottom:12px"><div class="row between"><b>Penumpang <span class="no">' + i + '</span></b><button type="button" class="btn sm ghost red rm" aria-label="Hapus penumpang">Hapus</button></div><div class="grid g2 mt"><div class="field"><label>Nama lengkap *</label><input class="in pnama" maxlength="80" autocomplete="off"></div><div class="field"><label>Kategori tarif *</label><select class="in pkat">' + kat.map(k => '<option value="' + esc(k) + '">' + esc(k) + ' — ' + rp(harga[k]) + '</option>').join('') + '</select></div></div>' +
@@ -449,7 +450,8 @@ window.SKOff = (function () {
   // ---------- JADWAL ----------
   App.page('jadwal', 'A', async function (v) {
     v.innerHTML = head('Jadwal Pelayaran', '<button class="btn grn" id="baru">＋ Jadwal baru</button>') + '<div class="card mb no-print"><div class="grid g4" style="align-items:end"><div class="field"><label>Dari tanggal</label><input class="in" type="date" id="d1"></div><div class="field"><label>Sampai</label><input class="in" type="date" id="d2"></div><div class="field"><label>Status</label><select class="in" id="ds"><option value="">Semua</option><option>Terjadwal</option><option>Berangkat</option><option>Tiba</option><option>Batal</option></select></div><div class="field"><button class="btn block" id="cari">Terapkan</button></div></div></div><div id="jl">' + App.skel(3, 60) + '</div>';
-    let ref = { kapal: [], rute: [] };
+    v.insertAdjacentHTML('afterbegin', '<div class="card mb no-print" id="rt"></div>');
+    let ref = { kapal: [], rute: [] }, rtn = { rows: [], horizon: 14, kapal: [], rute: [] };
     const muat = async () => {
       $('#jl', v).innerHTML = App.skel(3, 60);
       try {
@@ -475,6 +477,48 @@ window.SKOff = (function () {
       if (eb) { const j = ref.rows.filter(x => x.JadwalID === eb.dataset.e)[0]; form(j); }
       if (cb) App.formModal({ title: 'Batalkan jadwal', cls: 'red', submitLabel: 'Batalkan jadwal', fields: [{ k: 'alasan', label: 'Alasan pembatalan', type: 'textarea', req: true, hint: 'Pesanan terdampak otomatis dibatalkan; yang sudah dibayar berstatus Refund.' }], onSubmit: async x => { const r = await App.api('jadwal.cancel', { jadwalId: cb.dataset.c, alasan: x.alasan }); App.toast(r.message, 'warn'); muat(); } });
     });
+    // ---- jadwal rutin: dibuat otomatis, cukup dinonaktifkan bila kapal tidak beroperasi ----
+    const HN = ['', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'], HS = ['', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+    const hariTxt = h => h.length === 7 ? 'Setiap hari' : h.map(n => HS[n]).join(', ');
+    const muatRutin = async () => {
+      const box = $('#rt', v);
+      try {
+        const r = await App.api('rutin.list'); rtn = r.data;
+        box.innerHTML = '<div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div><h3 style="margin:0">Jadwal rutin (otomatis)</h3><div class="mut sm">Jadwal dibuat otomatis ' + rtn.horizon + ' hari ke depan dari pola di bawah. Kapal tidak beroperasi? Nonaktifkan polanya.</div></div><button class="btn sm grn" id="rbaru">＋ Pola rutin</button></div>' +
+          (rtn.rows.length ? App.table([{ h: 'Kapal / Rute', f: x => '<b>' + esc(x.Kapal) + '</b><br><span class="mut sm">' + esc(x.Rute) + '</span>' }, { h: 'Hari', f: x => esc(hariTxt(x.Hari)) }, { h: 'Jam berangkat', f: x => esc(x.Jam.join(', ')) },
+            { h: 'Kuota', cls: 'num', f: x => x.Kuota + (x.KuotaR2 ? ' + ' + x.KuotaR2 + ' motor' : '') }, { h: 'Jadwal mendatang', cls: 'num', f: x => x.Mendatang },
+            { h: 'Status', f: x => x.Status === 'Aktif' ? '<span class="badge ok">Beroperasi</span>' : '<span class="badge">Nonaktif</span>' },
+            { h: 'Aksi', f: x => '<div class="row" style="gap:6px;flex-wrap:nowrap"><button class="btn sm ghost" data-re="' + esc(x.RutinID) + '">Ubah</button>' + (x.Status === 'Aktif' ? '<button class="btn sm ghost red" data-rt="' + esc(x.RutinID) + '" data-on="0">Nonaktifkan</button>' : '<button class="btn sm grn" data-rt="' + esc(x.RutinID) + '" data-on="1">Aktifkan</button>') + '</div>' }], rtn.rows) : '<div class="empty mt">Belum ada pola rutin. Klik “＋ Pola rutin” untuk membuat jadwal otomatis.</div>');
+      } catch (e) { box.innerHTML = '<div class="alert err">' + esc(e.message) + '</div>'; }
+    };
+    const formRutin = (x) => {
+      const hs = x ? x.Hari : [1, 2, 3, 4, 5, 6, 7];
+      App.formModal({ title: x ? 'Ubah pola rutin' : 'Pola rutin baru', wide: true, fields: [
+        { k: 'KapalID', label: 'Kapal', type: 'select', req: true, value: x && x.KapalID, options: rtn.kapal.map(k => [k.KapalID, k.Nama + ' (kapasitas ' + k.Kapasitas + ')']) },
+        { k: 'RuteID', label: 'Rute', type: 'select', req: true, value: x && x.RuteID, options: rtn.rute.map(r => [r.RuteID, r.Nama]) },
+        { k: 'Jam', label: 'Jam berangkat (WITA)', req: true, value: x ? x.Jam.join(', ') : '', ph: '08:00, 14:30', hint: 'Format 24 jam. Beberapa jam dipisah koma.' },
+        { k: 'DurasiMenit', label: 'Durasi pelayaran (menit)', type: 'number', value: x && x.DurasiMenit ? x.DurasiMenit : '', hint: 'Kosongkan untuk mengikuti durasi rute.' },
+        { k: 'Kuota', label: 'Kuota kursi', type: 'number', req: true, value: x ? x.Kuota : '' }, { k: 'KuotaR2', label: 'Kuota motor (R2)', type: 'number', value: x ? x.KuotaR2 : 0 },
+        { k: 'TglMulai', label: 'Berlaku mulai (opsional)', type: 'date', value: x ? x.TglMulai : '' }, { k: 'TglSampai', label: 'Berlaku sampai (opsional)', type: 'date', value: x ? x.TglSampai : '' }]
+        .concat([1, 2, 3, 4, 5, 6, 7].map(n => ({ k: 'h' + n, label: HN[n], type: 'checkbox', value: hs.indexOf(n) >= 0 }))),
+        onSubmit: async f => {
+          const d = { KapalID: f.KapalID, RuteID: f.RuteID, Jam: f.Jam, DurasiMenit: f.DurasiMenit, Kuota: Number(f.Kuota), KuotaR2: Number(f.KuotaR2) || 0, TglMulai: f.TglMulai, TglSampai: f.TglSampai, Hari: [1, 2, 3, 4, 5, 6, 7].filter(n => f['h' + n]).join(',') };
+          if (x) d.RutinID = x.RutinID; const r = await App.api('rutin.save', d); App.toast(r.message); muatRutin(); muat();
+        } });
+    };
+    v.addEventListener('click', async e => {
+      const nb = e.target.closest('#rbaru'), eb = e.target.closest('[data-re]'), tb = e.target.closest('[data-rt]');
+      if (nb) { if (!rtn.kapal.length || !rtn.rute.length) return App.toast('Lengkapi kapal aktif dan rute di Master Data dulu.', 'warn'); formRutin(null); }
+      if (eb) formRutin(rtn.rows.filter(r => r.RutinID === eb.dataset.re)[0]);
+      if (tb) {
+        const id = tb.dataset.rt, on = tb.dataset.on === '1';
+        if (on) { const r = await App.api('rutin.toggle', { rutinId: id, aktif: true }); App.toast(r.message); muatRutin(); muat(); return; }
+        App.formModal({ title: 'Nonaktifkan pola rutin', cls: 'red', submitLabel: 'Nonaktifkan', fields: [
+          { k: 'batalkan', label: 'Tutup juga jadwal mendatang yang belum ada pesanannya', type: 'checkbox', value: true, hint: 'Jadwal yang sudah ada pesanannya tidak disentuh; batalkan manual dari daftar jadwal bila perlu.', full: true }],
+          onSubmit: async f => { const r = await App.api('rutin.toggle', { rutinId: id, aktif: false, batalkan: !!f.batalkan }); App.toast(r.message, 'warn'); muatRutin(); muat(); } });
+      }
+    });
+    muatRutin();
     muat();
   });
 

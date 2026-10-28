@@ -809,8 +809,8 @@ function skReady() {
   if (window.SKPerud) return Promise.resolve();
   if (skLoading) return skLoading;
   const muat = src => new Promise((ok, gagal) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => gagal(new Error('Gagal memuat ' + src + '. Periksa berkas sudah diunggah.')); document.head.appendChild(s); });
-  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'css/sk-gaya.css?v=202610282056'; document.head.appendChild(css);
-  skLoading = muat('js/vendor/qrcode.js?v=202610282056').then(() => muat('js/sidikapet.js?v=202610282056')).then(() => { Object.assign(ROUTES, window.SKPerud.routes); }).catch(e => { skLoading = null; throw e; });
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'css/sk-gaya.css?v=202610282143'; document.head.appendChild(css);
+  skLoading = muat('js/vendor/qrcode.js?v=202610282143').then(() => muat('js/sidikapet.js?v=202610282143')).then(() => { Object.assign(ROUTES, window.SKPerud.routes); }).catch(e => { skLoading = null; throw e; });
   return skLoading;
 }
 
