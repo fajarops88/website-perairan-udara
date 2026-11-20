@@ -111,6 +111,87 @@ function copyText(t) {
 }
 function fallbackCopy(t) { const x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); try { document.execCommand('copy'); toast('Disalin.'); } catch (e) { toast('Salin manual: ' + t, 'warn'); } x.remove(); }
 
+/* ---------- Menu publik tampil / sembunyi ----------
+   Admin mengatur dari "Pengaturan Menu". Data: pengaturan menu_sembunyi (kode dipisah koma) dan menu_pesan.
+   Admin yang sedang login tetap melihat semua menu agar bisa menguji sebelum dibuka ke publik. */
+const MENU_DAFTAR = [
+  ['home', 'Beranda', 0, 1],
+  ['g-profil', 'Profil (seluruh sub-menu)', 0, 0],
+  ['profil-sejarah', 'Profil & Sejarah', 1, 0], ['profil-visimisi', 'Visi & Misi', 1, 0], ['profil-tupoksi', 'Tugas & Fungsi', 1, 0],
+  ['struktur', 'Struktur Organisasi', 1, 0], ['pegawai', 'Pejabat & Pegawai', 1, 0],
+  ['berita', 'Berita & Pengumuman', 0, 0], ['agenda', 'Agenda', 0, 0], ['regulasi', 'Regulasi', 0, 0],
+  ['g-sidikapet', 'SIDIKAPET (seluruh sub-menu)', 0, 0],
+  ['sidikapet', 'Tentang & Alur', 1, 0], ['tk-pesan', 'Pesan Tiket', 1, 0], ['tk-cek', 'Cek Tiket', 1, 0], ['tk-jadwal', 'Jadwal & Tarif', 1, 0],
+  ['tk-masuk', 'Masuk Petugas', 1, 1],
+  ['pengaduan', 'Pengaduan', 0, 0], ['survei', 'Survei Layanan', 0, 0], ['kontak', 'Kontak', 0, 0]
+];
+const MENU_KUNCI = MENU_DAFTAR.filter(x => x[3]).map(x => x[0]).concat(['login']);
+const MENU_HALAMAN = MENU_DAFTAR.filter(x => !x[3] && x[0].indexOf('g-') !== 0).map(x => x[0]);
+const MENU_INDUK = { 'profil-sejarah': 'g-profil', 'profil-visimisi': 'g-profil', 'profil-tupoksi': 'g-profil', struktur: 'g-profil', pegawai: 'g-profil',
+  sidikapet: 'g-sidikapet', 'tk-pesan': 'g-sidikapet', 'tk-cek': 'g-sidikapet', 'tk-jadwal': 'g-sidikapet' };
+const menuSembunyi = () => String(AppState.settings.menu_sembunyi || '').split(',').map(x => x.trim()).filter(Boolean);
+const menuKode = n => n.focus ? n.id + '-' + n.focus : n.id;
+function menuTampil(kode) {
+  if (AppState.token || MENU_KUNCI.indexOf(kode) >= 0) return true;
+  const h = menuSembunyi();
+  return !(h.indexOf(kode) >= 0 || (MENU_INDUK[kode] && h.indexOf(MENU_INDUK[kode]) >= 0));
+}
+// Halaman publik ditutup? (tautan ?cek=KODE dari WhatsApp tetap berfungsi walau menu Cek Tiket disembunyikan)
+function menuTertutup(page, params) {
+  params = params || {};
+  if (AppState.token) return false;
+  if (page === 'profil') return params.focus ? !menuTampil('profil-' + params.focus) : !['sejarah', 'visimisi', 'tupoksi'].some(f => menuTampil('profil-' + f));
+  if (page === 'beritaDetail') page = 'berita';
+  if (page === 'tk-cek' && params.k) return false;
+  return MENU_HALAMAN.indexOf(page) >= 0 && !menuTampil(page);
+}
+function navTampil() {
+  return NAV.map(n => n.children ? Object.assign({}, n, { children: n.children.filter(c => menuTampil(menuKode(c))) }) : n)
+    .filter(n => n.children ? n.children.length : menuTampil(menuKode(n)));
+}
+// Beranda: buang tombol dan blok yang tujuannya ditutup
+function menuHomeFilter(html) {
+  if (AppState.token) return html;
+  const t = document.createElement('template'); t.innerHTML = html;
+  t.content.querySelectorAll('[data-nav]').forEach(el => { if (menuTertutup(el.dataset.nav, { focus: el.dataset.focus })) el.remove(); });
+  t.content.querySelectorAll('[data-menu-blok]').forEach(el => { if (!el.dataset.menuBlok.split(' ').some(k => menuTampil(k))) el.remove(); });
+  return t.innerHTML;
+}
+function menuTutupHtml() {
+  const p = String(AppState.settings.menu_pesan || '').trim();
+  return wrap('<div class="' + CARD + ' p-8 text-center max-w-xl mx-auto"><div class="text-outline">' + ic('visibility_off', '!text-[44px]') + '</div>' +
+    '<h2 class="font-headline text-xl font-bold mt-2">Layanan sedang tidak tersedia</h2>' +
+    '<p class="text-on-surface-variant mt-2">' + esc(p || 'Halaman ini sedang tidak dibuka untuk umum. Silakan kembali lagi nanti.') + '</p>' +
+    '<button type="button" class="' + BTN_P + ' mt-5" data-nav="home">' + ic('home', '!text-[18px]') + ' Kembali ke beranda</button></div>');
+}
+async function renderAdminMenu() {
+  const set = {}; (await adm('adminList', 'Pengaturan')).data.forEach(r => { set[r.kunci] = r.nilai; });
+  const h = String(set.menu_sembunyi || '').split(',').map(x => x.trim()).filter(Boolean);
+  const baris = MENU_DAFTAR.map(x => {
+    const kunci = x[3], anak = x[2], mati = anak && MENU_INDUK[x[0]] && h.indexOf(MENU_INDUK[x[0]]) >= 0;
+    return '<tr class="border-t border-[#F1F5F9]"><td class="p-3' + (anak ? ' pl-9' : ' font-semibold') + '">' + esc(x[1]) + (kunci ? ' <span class="text-xs text-outline">(selalu tampil)</span>' : '') + '</td>' +
+      '<td class="p-3 text-center"><input type="checkbox" class="mn-cb w-5 h-5 accent-[#006591]" data-k="' + x[0] + '" data-induk="' + (MENU_INDUK[x[0]] || '') + '"' + (h.indexOf(x[0]) < 0 ? ' checked' : '') + (kunci ? ' checked disabled' : '') + (mati ? ' disabled' : '') + ' aria-label="Tampilkan ' + esc(x[1]) + '"></td></tr>';
+  }).join('');
+  const inner = '<form id="mn-form" class="' + CARD + ' p-6 space-y-5 max-w-3xl"><p class="text-sm text-on-surface-variant">Centang untuk menampilkan, hapus centang untuk menyembunyikan dari pengunjung. Item yang disembunyikan hilang dari menu, bar bawah, footer, dan tombol di beranda, dan halamannya menampilkan pesan &quot;Layanan sedang tidak tersedia&quot;. Anda yang sedang login tetap melihat semua menu. Pesanan tiket, pengaduan, dan survei dari halaman yang ditutup juga ditolak server. Perubahan dapat tertunda beberapa menit bagi pengunjung yang sudah membuka situs.</p>' +
+    '<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-surface-container text-xs uppercase text-on-surface-variant"><tr><th class="p-3 text-left">Menu</th><th class="p-3 text-center">Tampil</th></tr></thead><tbody>' + baris + '</tbody></table></div>' +
+    field('Pesan saat halaman ditutup (opsional)', '<textarea name="pesan" rows="2" maxlength="300" class="' + INP + '">' + esc(set.menu_pesan || '') + '</textarea>', 'Contoh: Pemesanan tiket dibuka kembali hari Senin.') +
+    '<button type="submit" class="' + BTN_P + '">' + ic('save', '!text-[18px]') + ' Simpan pengaturan menu</button></form>';
+  return { html: adminLayout('admin-menu', 'Pengaturan Menu', inner), init: () => {
+    const cbs = $$('.mn-cb');
+    const sinkron = () => cbs.forEach(c => { const p = c.dataset.induk; if (p && !c.dataset.kunci) { const ind = cbs.find(x => x.dataset.k === p); c.disabled = !!(ind && !ind.checked); const tr = c.closest('tr'); if (tr) { tr.style.opacity = c.disabled ? '.5' : ''; tr.title = c.disabled ? 'Ikut disembunyikan karena induknya disembunyikan' : ''; } } });
+    cbs.forEach(c => { if (c.dataset.k === 'tk-masuk') c.dataset.kunci = '1'; c.addEventListener('change', sinkron); });
+    sinkron();
+    $('#mn-form').addEventListener('submit', async e => {
+      e.preventDefault(); const f = e.target;
+      const sembunyi = cbs.filter(c => !c.checked).map(c => c.dataset.k).join(','), o = { menu_sembunyi: sembunyi, menu_pesan: f.pesan.value };
+      try { await withBusy(f.querySelector('button[type=submit]'), async () => {
+        await adm('adminSaveSettings', o); AppState.cache = {}; Object.assign(AppState.settings, o);
+        try { localStorage.setItem('set_cache', JSON.stringify(AppState.settings)); } catch (x) { /* abaikan */ }
+        toast('Pengaturan menu tersimpan.'); }); } catch (x) { if (x.message !== 'SESI') toast(x.message, 'error'); }
+    });
+  } };
+}
+
 /* ---------- Header, footer, navigasi ---------- */
 const NAV = [
   { id: 'home', l: 'Beranda' },
@@ -133,7 +214,7 @@ const PAGE_GROUP = { profil: 'Profil', struktur: 'Profil', pegawai: 'Profil', be
 function renderHeader() {
   const s = AppState.settings;
   const tag = n => n.tag ? '<span class="ml-1.5 bg-[#FFB95F] text-[#2a1700] text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">' + esc(n.tag) + '</span>' : '';
-  const desk = NAV.map(n => n.children
+  const desk = navTampil().map(n => n.children
     ? '<div class="relative group"><button type="button" data-group="' + esc(n.l) + '" class="nav-link inline-flex items-center gap-1 py-2" aria-haspopup="true">' + esc(n.l) + ic('expand_more', '!text-[18px]') + '</button>' +
       '<div class="hidden group-hover:block group-focus-within:block absolute left-0 top-full w-60 bg-white border border-[#E2E8F0] rounded-lg shadow-lg py-2 z-50">' +
       n.children.map(c => '<a href="javascript:void(0)" ' + navAttr(c) + ' class="block px-4 py-2 text-sm text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface">' + esc(c.l) + '</a>').join('') + '</div></div>'
@@ -151,7 +232,7 @@ function renderHeader() {
     '<button type="button" data-act="menu" aria-label="Buka menu" class="xl:hidden p-2 rounded hover:bg-surface-container">' + ic('menu', '!text-[26px]') + '</button></div>';
 }
 function renderMobileMenu() {
-  const items = NAV.reduce((a, n) => a.concat(n.children ? n.children : [n]), []);
+  const items = navTampil().reduce((a, n) => a.concat(n.children ? n.children : [n]), []);
   $('#mobile-menu').innerHTML =
     '<div class="flex items-center justify-between px-4 h-16 border-b border-[#E2E8F0]"><span class="font-headline font-bold text-primary-container">Menu</span><button type="button" data-act="menu-close" aria-label="Tutup menu" class="p-2 rounded hover:bg-surface-container">' + ic('close', '!text-[26px]') + '</button></div>' +
     '<div class="p-4 flex flex-col gap-1">' + items.map(n => '<a href="javascript:void(0)" ' + navAttr(n) + ' class="px-3 py-3 rounded text-[15px] font-semibold hover:bg-surface-container-low">' + esc(n.m || n.l) + (n.tag ? ' <span class="ml-1 bg-[#FFB95F] text-[10px] px-1.5 py-0.5 rounded uppercase">' + esc(n.tag) + '</span>' : '') + '</a>').join('') +
@@ -162,7 +243,7 @@ function closeMobileMenu() { $('#mobile-menu').classList.add('hidden'); }
 function renderBottomNav() {
   const it = [['home', 'home', 'Beranda'], ['tk-pesan', 'confirmation_number', 'Tiket'], ['pengaduan', 'campaign', 'Aduan'], ['survei', 'star_rate', 'SKM']];
   $('#bottom-nav').innerHTML = '<div class="flex justify-around items-center h-16 px-2">' +
-    it.map(x => '<a href="javascript:void(0)" data-nav="' + x[0] + '" class="bn-item">' + ic(x[1]) + '<span>' + x[2] + '</span></a>').join('') +
+    it.filter(x => menuTampil(x[0])).map(x => '<a href="javascript:void(0)" data-nav="' + x[0] + '" class="bn-item">' + ic(x[1]) + '<span>' + x[2] + '</span></a>').join('') +
     '<button type="button" data-act="menu" class="bn-item">' + ic('menu') + '<span>Menu</span></button></div>';
 }
 function renderFooter() {
@@ -173,7 +254,7 @@ function renderFooter() {
     '<p class="text-sm text-[#c3c6ce] mt-3 leading-relaxed">Informasi resmi, layanan, pengaduan, dan survei kepuasan masyarakat.</p></div>' +
     '<div class="space-y-2 text-sm text-[#c3c6ce]"><h3 class="font-headline font-semibold text-white mb-2">Kontak</h3>' + row('location_on', s.alamat) + row('call', s.telepon) + row('chat', s.whatsapp) + row('mail', s.email_kontak) + row('schedule', s.jam_layanan) + '</div>' +
     '<div><h3 class="font-headline font-semibold text-white mb-2">Pintasan</h3><ul class="space-y-1.5 text-sm text-[#c3c6ce]">' +
-    [['regulasi', 'Regulasi'], ['sidikapet', 'SIDIKAPET'], ['tk-pesan', 'Pesan Tiket Kapal'], ['pengaduan', 'Pengaduan'], ['survei', 'Survei Layanan'], ['berita', 'Berita & Pengumuman'], ['agenda', 'Agenda'], ['login', 'Login Admin']]
+    [['regulasi', 'Regulasi'], ['sidikapet', 'SIDIKAPET'], ['tk-pesan', 'Pesan Tiket Kapal'], ['pengaduan', 'Pengaduan'], ['survei', 'Survei Layanan'], ['berita', 'Berita & Pengumuman'], ['agenda', 'Agenda'], ['login', 'Login Admin']].filter(x => menuTampil(x[0]))
       .map(x => '<li><a href="javascript:void(0)" data-nav="' + x[0] + '" class="hover:text-white">' + x[1] + '</a></li>').join('') + '</ul></div></div>' +
     '<div class="border-t border-white/10 text-center text-xs text-[#c3c6ce] py-4 px-4">&copy; ' + new Date().getFullYear() + ' ' + esc(s.nama_dinas || '') + '. Seluruh hak dilindungi.</div></div>';
 }
@@ -200,6 +281,7 @@ async function navigateTo(page, opts) {
   if (window.SKA && SKA.cleanup) SKA.cleanup();
   showLoading();
   try {
+    if (menuTertutup(page, params)) { setShell('home'); $('#app-container').innerHTML = menuTutupHtml(); AppState.page = 'home'; AppState.params = {}; updateActiveNav('home'); window.scrollTo(0, 0); return; }
     if (SK_RE.test(page)) await skReady();
     const fn = ROUTES[page];
     if (!fn) throw new Error('Halaman tidak ditemukan.');
@@ -263,12 +345,12 @@ function homeHtml(d, loading) {
       stat('sentiment_satisfied', loading ? '&hellip;' : sv.n ? sv.rata.toFixed(2) + ' <span class="text-base font-normal text-outline">/ 5</span>' : '&ndash;', loading ? 'Memuat data...' : sv.n ? 'Indeks kepuasan (' + sv.n + ' responden)' : 'Belum ada survei masuk') +
       stat('task_alt', loading ? '&hellip;' : ad.total ? Math.round(ad.selesai / ad.total * 100) + '%' : '&ndash;', loading ? 'Memuat data...' : ad.total ? 'Pengaduan telah selesai (' + ad.selesai + ' dari ' + ad.total + ')' : 'Belum ada pengaduan') +
       ''+ '</div>' +
-      '<div class="' + CARD + ' p-6 md:p-8 mb-14 grid gap-6 md:grid-cols-[1fr_auto] items-center bg-gradient-to-r from-primary-fixed/40 to-white"><div><span class="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-secondary-fixed text-on-secondary-fixed-variant text-xs font-bold uppercase">' + ic('hub', '!text-[16px]') + ' Sistem terintegrasi</span>' +
+      '<div data-menu-blok="sidikapet tk-pesan tk-cek tk-jadwal" class="' + CARD + ' p-6 md:p-8 mb-14 grid gap-6 md:grid-cols-[1fr_auto] items-center bg-gradient-to-r from-primary-fixed/40 to-white"><div><span class="inline-flex items-center gap-1.5 px-3 py-1 rounded bg-secondary-fixed text-on-secondary-fixed-variant text-xs font-bold uppercase">' + ic('hub', '!text-[16px]') + ' Sistem terintegrasi</span>' +
       '<h2 class="font-headline text-2xl font-bold text-primary-container mt-3">SIDIKAPET</h2><p class="text-on-surface-variant mt-1 max-w-2xl">Sistem Informasi Digital Data Kapal, Penumpang, dan Tiket Terintegrasi. Pesan tiket kapal secara online, cek tiket, serta pendataan kapal dan penumpang.</p></div>' +
       '<div class="flex flex-wrap gap-3"><button type="button" data-nav="tk-pesan" class="' + BTN_P + '">' + ic('confirmation_number', '!text-[18px]') + ' Pesan tiket</button><button type="button" data-nav="tk-cek" class="' + BTN_S + '">' + ic('manage_search', '!text-[18px]') + ' Cek tiket</button></div></div>' +
-      '<div class="flex items-end justify-between mb-6"><h2 class="font-headline text-2xl font-bold text-primary-container">Berita & Pengumuman</h2><button type="button" data-nav="berita" class="text-secondary font-semibold text-sm hover:underline">Lihat semua</button></div>' +
-      '<div class="grid gap-6 md:grid-cols-3">' + (loading ? newsSkeleton() + newsSkeleton() + newsSkeleton() : (d.berita || []).length ? d.berita.map(newsCard).join('') : emptyBox('newspaper', 'Belum ada berita.')) + '</div>');
-  return html;
+      '<div data-menu-blok="berita" class="flex items-end justify-between mb-6"><h2 class="font-headline text-2xl font-bold text-primary-container">Berita & Pengumuman</h2><button type="button" data-nav="berita" class="text-secondary font-semibold text-sm hover:underline">Lihat semua</button></div>' +
+      '<div data-menu-blok="berita" class="grid gap-6 md:grid-cols-3">' + (loading ? newsSkeleton() + newsSkeleton() + newsSkeleton() : (d.berita || []).length ? d.berita.map(newsCard).join('') : emptyBox('newspaper', 'Belum ada berita.')) + '</div>');
+  return menuHomeFilter(html);
 }
 async function renderHome() {
   const hit = AppState.cache['home{}'], segar = hit && Date.now() - hit.t < 120000;
@@ -319,7 +401,7 @@ function agendaPanel(list, loading) {
     return '<button type="button" data-nav="agenda" class="w-full flex gap-3 text-left rounded-lg p-2 -mx-2 hover:bg-white/10 transition-colors"><div class="w-12 shrink-0 rounded-lg bg-white/15 flex flex-col items-center justify-center py-1.5"><span class="font-headline text-xl font-extrabold leading-none">' + hari + '</span><span class="text-[11px] font-semibold uppercase mt-0.5">' + esc(bulan) + '</span></div>' +
       '<div class="min-w-0"><div class="font-semibold leading-snug">' + esc(a.judul) + '</div><div class="text-xs text-[#d1e4ff] mt-0.5">' + esc(agendaRange(a)) + (info ? ' &bull; ' + esc(info) : '') + '</div></div></button>';
   };
-  return '<aside class="rounded-xl bg-white/10 border border-white/20 p-5 md:p-6 text-white" aria-label="Agenda terdekat"><div class="flex items-center justify-between mb-4"><h2 class="font-headline text-lg font-bold flex items-center gap-2">' + ic('event', '!text-[22px]') + ' Agenda Kegiatan</h2>' +
+  return '<aside data-menu-blok="agenda" class="rounded-xl bg-white/10 border border-white/20 p-5 md:p-6 text-white" aria-label="Agenda terdekat"><div class="flex items-center justify-between mb-4"><h2 class="font-headline text-lg font-bold flex items-center gap-2">' + ic('event', '!text-[22px]') + ' Agenda Kegiatan</h2>' +
     '<button type="button" data-nav="agenda" class="text-sm font-semibold text-secondary-container hover:underline">Lihat semua</button></div>' +
     (list.length ? '<div class="space-y-3">' + list.map(item).join('') + '</div>' : '<p class="text-sm text-[#d1e4ff]">' + (loading ? 'Memuat agenda...' : 'Belum ada agenda mendatang.') + '</p>') + '</aside>';
 }
@@ -595,7 +677,7 @@ async function renderLogin() {
   } };
 }
 
-const ADMIN_NAV = [['admin-dashboard', 'dashboard', 'Dashboard'], ['admin-pengaduan', 'mark_email_unread', 'Pengaduan'], ['admin-survei', 'star', 'Hasil Survei'], ['admin-konten', 'newspaper', 'Kelola Konten'], ['admin-pengaturan', 'admin_panel_settings', 'Pengaturan & Log'],
+const ADMIN_NAV = [['admin-dashboard', 'dashboard', 'Dashboard'], ['admin-pengaduan', 'mark_email_unread', 'Pengaduan'], ['admin-survei', 'star', 'Hasil Survei'], ['admin-konten', 'newspaper', 'Kelola Konten'], ['admin-pengaturan', 'admin_panel_settings', 'Pengaturan & Log'], ['admin-menu', 'visibility', 'Pengaturan Menu'],
   ['', '', 'SIDIKAPET \u2014 Tiket Kapal'], ['admin-tk-dash', 'sailing', 'Dasbor Tiket'], ['admin-tk-loket', 'point_of_sale', 'Loket Tiket'], ['admin-tk-kas', 'payments', 'Tutup Kas'], ['admin-tk-scan', 'qr_code_scanner', 'Validasi Pelabuhan'], ['admin-tk-manifest', 'list_alt', 'Manifest'], ['admin-tk-jadwal', 'calendar_month', 'Jadwal Kapal'], ['admin-tk-master', 'database', 'Master Data Tiket'], ['admin-tk-laporan', 'monitoring', 'Laporan Tiket'], ['admin-tk-pengguna', 'group', 'Petugas Tiket'], ['admin-tk-pengaturan', 'tune', 'Pengaturan Tiket'], ['admin-tk-audit', 'policy', 'Log Audit Tiket'], ['', '', 'Komunikasi'], ['admin-tk-notif', 'chat', 'WhatsApp & Notifikasi'], ['admin-tk-crm', 'contacts', 'CRM Kontak']];
 function adminLayout(active, title, inner, actions) {
   return '<div class="min-h-screen bg-surface md:flex"><aside class="md:w-64 md:fixed md:inset-y-0 bg-white border-b md:border-b-0 md:border-r border-[#E2E8F0] flex md:flex-col z-30">' +
@@ -809,8 +891,8 @@ function skReady() {
   if (window.SKPerud) return Promise.resolve();
   if (skLoading) return skLoading;
   const muat = src => new Promise((ok, gagal) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => gagal(new Error('Gagal memuat ' + src + '. Periksa berkas sudah diunggah.')); document.head.appendChild(s); });
-  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'css/sk-gaya.css?v=202610282206'; document.head.appendChild(css);
-  skLoading = muat('js/vendor/qrcode.js?v=202610282206').then(() => muat('js/sidikapet.js?v=202610282206')).then(() => { Object.assign(ROUTES, window.SKPerud.routes); }).catch(e => { skLoading = null; throw e; });
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'css/sk-gaya.css?v=202611202241'; document.head.appendChild(css);
+  skLoading = muat('js/vendor/qrcode.js?v=202611202241').then(() => muat('js/sidikapet.js?v=202611202241')).then(() => { Object.assign(ROUTES, window.SKPerud.routes); }).catch(e => { skLoading = null; throw e; });
   return skLoading;
 }
 
@@ -818,7 +900,7 @@ function skReady() {
 const ROUTES = {
   home: renderHome, profil: renderProfil, struktur: renderStruktur, pegawai: renderPegawai, berita: renderBerita, beritaDetail: renderBeritaDetail, agenda: renderAgenda,
   regulasi: renderRegulasi, pengaduan: renderPengaduan, survei: renderSurvei, kontak: renderKontak, login: renderLogin,
-  'admin-dashboard': renderAdminDashboard, 'admin-pengaduan': renderAdminPengaduan, 'admin-survei': renderAdminSurvei, 'admin-konten': renderAdminKonten, 'admin-pengaturan': renderAdminPengaturan
+  'admin-dashboard': renderAdminDashboard, 'admin-pengaduan': renderAdminPengaduan, 'admin-survei': renderAdminSurvei, 'admin-konten': renderAdminKonten, 'admin-pengaturan': renderAdminPengaturan, 'admin-menu': renderAdminMenu
 };
 // Cangkang situs (header, footer, menu) tampil seketika memakai pengaturan tersimpan di peramban;
 // data terbaru diambil bersamaan dengan memuat halaman, lalu cangkang disegarkan.
@@ -837,5 +919,6 @@ async function boot() {
     renderShell();
   } catch (e) { /* tetap lanjut */ }
   await nav;
+  if (AppState.page && menuTertutup(AppState.page, AppState.params)) navigateTo(AppState.page, { params: AppState.params, noHistory: true });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
